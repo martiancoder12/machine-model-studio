@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Builds
+dist/
+build/
+*.tsbuildinfo
+
+# Exercise sandbox workspaces (runtime-generated C, objects, binaries)
+sandbox/
+
+# Local data
+data/*.sqlite
+data/*.sqlite-journal
+
+# OS / editor cruft
+.DS_Store
+*.log
