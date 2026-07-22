@@ -1,0 +1,53 @@
+{
+  "moduleId": "02",
+  "lab": {
+    "summary": "Three short experiments on integer representation — each with a written prediction step. The predicting is the exercise; the running is the grading.",
+    "steps": [
+      {
+        "n": 1,
+        "title": "Survey your machine",
+        "detail": "Write the `sizeof` survey from the *Fixed-width integers* section (retype it, don't paste it): it prints `sizeof` for `char`, `short`, `int`, `long`, `long long`, `void *`, `size_t`, and all eight fixed-width types from `<stdint.h>`, using `%zu`. **Before running, write down your guesses** for `sizeof(int)`, `sizeof(long)`, and `sizeof(void *)`. Compile with `cc -std=c11 -Wall -Wextra` and run. On the author's machine the answers are 4, 8, and 8. If you are ever on a different machine, rerun the survey there and note what moved; `int` and the fixed-width types won't, `long` and pointers can.",
+        "command": null
+      },
+      {
+        "n": 2,
+        "title": "Force the wrap, predict first",
+        "detail": "Write `lab_wrap.c`:\n\n```c\n#include <stdint.h>\n#include <stdio.h>\n\nint main(void)\n{\n    uint32_t u = UINT32_MAX;\n\n    /* Write down your three predictions BEFORE running this. */\n    printf(\"UINT32_MAX     = %u\\n\", u);\n    printf(\"UINT32_MAX + 1 = %u\\n\", u + 1u);\n    printf(\"UINT32_MAX + 2 = %u\\n\", u + 2u);\n    printf(\"0u - 1u        = %u\\n\", 0u - 1u);\n    return 0;\n}\n```\n\n**Write your four predictions on paper.** Then compile and run. Expected output:\n\n```text\nUINT32_MAX     = 4294967295\nUINT32_MAX + 1 = 0\nUINT32_MAX + 2 = 1\n0u - 1u        = 4294967295\n```\n\nEvery answer is arithmetic mod 2³²: `4294967295 + 1 ≡ 0`, `+ 2 ≡ 1`, and `0 − 1 ≡ 4294967295`. If any prediction was wrong, redo the mod-2³² arithmetic by hand until the circle picture from the two's complement section is doing the work for you.",
+        "command": null
+      },
+      {
+        "n": 3,
+        "title": "The comparison trap, predict first",
+        "detail": "Write `lab_cmp.c`:\n\n```c\n#include <stdio.h>\n\nint main(void)\n{\n    /* Predict each line: 0 or 1? Write your answers down first. */\n    printf(\"(a) -1 < 1    -> %d\\n\", -1 < 1);\n    printf(\"(b) -1 < 1U   -> %d\\n\", -1 < 1U);\n    printf(\"(c) -1 > 1U   -> %d\\n\", -1 > 1U);\n\n    int  s = -1;\n    unsigned u = 1;\n    printf(\"(d) s < u     -> %d\\n\", s < u);\n    printf(\"(e) s + u     -> %u\\n\", s + u);\n    return 0;\n}\n```\n\n**Predict all five.** Then compile and run. Expected output:\n\n```text\nlab_cmp.c:12:39: warning: comparison of integers of different signs: 'int' and 'unsigned int' [-Wsign-compare]\n(a) -1 < 1    -> 1\n(b) -1 < 1U   -> 0\n(c) -1 > 1U   -> 1\n(d) s < u     -> 0\n(e) s + u     -> 0\n```\n\n(a) is the only ordinary comparison: two `int`s, `-1 < 1`, true. Every other line converted the signed operand to unsigned first: `-1` became `4294967295`, which is neither less than `1` (b, d) nor, added to `1`, anything but a wrapped `0` (e). Note also that the compiler warned only on (d): comparisons of literals are folded silently, but the variable comparison earned `-Wsign-compare`. The warning is the smoke alarm for this entire bug class.",
+        "command": null
+      }
+    ],
+    "closingPrompt": "State the rule in one sentence: when a signed and an unsigned operand of the same rank meet in an arithmetic or comparison expression, the signed operand is converted to unsigned — so `-1` becomes the largest value in the type, and the expression answers a question you didn't ask."
+  },
+  "buildTask": {
+    "title": "money — the fixed-point money calculator",
+    "brief": "A program called `money` that does decimal currency arithmetic in integer cents, with **no floating point anywhere**. Single file, `money.c`. The arithmetic core is four functions with exactly these signatures:\n\n```c\ntypedef enum { MONEY_OK = 0, MONEY_UNREPRESENTABLE = 1 } money_status;\n\nmoney_status cents_add(int64_t a, int64_t b, int64_t *out);\nmoney_status cents_sub(int64_t a, int64_t b, int64_t *out);\nmoney_status cents_mul(int64_t a, int64_t qty, int64_t *out);\nmoney_status cents_div(int64_t a, int64_t parts, int64_t *out, int64_t *rem);\n```\n\nAll amounts are `int64_t` **cents**: `$12.34` is `1234`, `−$5.00` is `−500`. `cents_mul` computes `a * qty` (price times quantity). `cents_div` splits `a` cents into `parts` equal shares: `*out` gets the share in cents, truncated toward zero, and `*rem` gets the leftover cents. Every function detects overflow *before* it happens and returns `MONEY_UNREPRESENTABLE` without writing a wrapped value to `*out`.\n\nThe CLI parses its operands from text — never through a floating-point type: `money add 19.99 0.01` → `20.00`; `money sub 0.00 0.01` → `-0.01`; `money mul 12.99 3` → `38.97`; `money div 10.00 3` → `3.33 rem 0.01`; `money add 92233720368547758.07 0.01` → `result unrepresentable`. Your parser accepts an optional leading `-`, one or more digits, and an optional `.` followed by exactly one or two digits (`12.3` means `12.30`). Anything else — empty strings, letters, a second `.` — is rejected with a usage message and a nonzero exit, not a crash.\n\n**Behavioural requirements.** The scaling is documented in exactly one comment block at the top of the file: what one unit of the integer means, why cents, and the division truncation rule. Division by `parts == 0` reports `result unrepresentable` (a split into zero shares has no answer), as does any genuine overflow. Output is always printed from cents: format as `d.cc` yourself, with exactly two fraction digits, including for negative amounts.\n\n**Test vector set** — your program must produce exactly these results, byte for byte: `add 19.99 0.01` → `20.00` · `add -5.00 -7.50` → `-12.50` · `sub 0.00 0.01` → `-0.01` · `sub -12.50 -7.50` → `-5.00` · `mul 12.99 3` → `38.97` · `mul -4.25 4` → `-17.00` · `mul 0.01 100` → `1.00` · `div 10.00 3` → `3.33 rem 0.01` · `div -10.00 3` → `-3.33 rem -0.01` · `div 0.05 2` → `0.02 rem 0.01` · `add 92233720368547758.07 0.01` → `result unrepresentable` · `mul 1.00 9223372036854775807` → `result unrepresentable` · `mul 92233720368547758.07 2` → `result unrepresentable` · `div 10.00 0` → `result unrepresentable`. (The large addend is `INT64_MAX` cents: one more cent cannot exist in the type. Your check must catch it *before* adding, and the program must not print a wrapped number.)\n\n**Constraints.** The strings `float` and `double` do not appear in the source — the grader greps. No reliance on types wider than `int64_t`; the overflow checks work within the type.",
+    "gate": false,
+    "rubric": [
+      {
+        "id": "no-float",
+        "criterion": "No `float` or `double` in the source; scaling is explicit and documented in one comment block (grep finds neither keyword; the comment block states the unit, the choice, and the division rule)",
+        "weight": 1
+      },
+      {
+        "id": "test-vectors",
+        "criterion": "Correct results on the provided test vector set, including negative amounts (every row of the table matches exactly, byte for byte)",
+        "weight": 1
+      },
+      {
+        "id": "overflow-detection",
+        "criterion": "Overflow is detected and reported (\"result unrepresentable\"), never silently wrapped (the overflow rows print the message and exit nonzero; no input exists that produces a wrapped total)",
+        "weight": 1
+      }
+    ],
+    "stretch": [
+      "Add a `rate` operation: `money rate 199.99 825` computes 8.25% of an amount in cents, staying integral end to end (basis points, multiply-then-divide, documented rounding). Watch the order of operations — multiply first, or you lose the cents.",
+      "Make `div` rounding selectable: truncation (as specified) versus half-up, chosen by a flag, with the rule printed in the output."
+    ]
+  }
+}

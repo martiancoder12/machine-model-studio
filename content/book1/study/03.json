@@ -1,0 +1,76 @@
+{
+  "moduleId": "03",
+  "lab": {
+    "summary": "Two short exercises, both mandatory: `swap` by value versus by pointer, and walking an array with `p + i` and `*` only. Draw the frame pictures — the drawings are the point.",
+    "steps": [
+      {
+        "n": 1,
+        "title": "Write the swap program in full",
+        "detail": "Part 1 — `swap`, by value and by pointer. Write this program in full:\n\n```c\n#include <stdio.h>\n\nvoid swap_by_value(int a, int b)\n{\n    int t = a;\n    a = b;\n    b = t;\n    printf(\"  inside: a = %d, b = %d\\n\", a, b);   /* swapped copies */\n}\n\nvoid swap_by_pointer(int *a, int *b)\n{\n    int t = *a;\n    *a = *b;\n    *b = t;\n}\n\nint main(void)\n{\n    int x = 1, y = 2;\n\n    printf(\"by value:   before x = %d, y = %d\\n\", x, y);\n    swap_by_value(x, y);\n    printf(\"by value:   after  x = %d, y = %d\\n\", x, y);\n\n    printf(\"by pointer: before x = %d, y = %d\\n\", x, y);\n    swap_by_pointer(&x, &y);\n    printf(\"by pointer: after  x = %d, y = %d\\n\", x, y);\n    return 0;\n}\n```",
+        "command": null
+      },
+      {
+        "n": 2,
+        "title": "Compile and run",
+        "detail": "Expected output:\n\n```text\nby value:   before x = 1, y = 2\n  inside: a = 2, b = 1\nby value:   after  x = 1, y = 2\nby pointer: before x = 1, y = 2\nby pointer: after  x = 2, y = 1\n```",
+        "command": "cc -std=c11 -Wall -Wextra swap.c -o swap && ./swap"
+      },
+      {
+        "n": 3,
+        "title": "Verify by-value changed nothing — draw why",
+        "detail": "Verify the by-value version did nothing to `main`'s variables: inside `swap_by_value` the swap happened (`a = 2, b = 1`), and back in `main` nothing changed. Draw why:\n\n```text\nBY VALUE — the function swaps copies in its own frame\n\nmain's frame                    swap_by_value's frame\n+-------+-------+               +-------+-------+-------+\n| x = 1 | y = 2 | -- copies --> | a = 1 | b = 2 |  t    |\n+-------+-------+               +-------+-------+-------+\n   unchanged                        dies with the frame\n```",
+        "command": null
+      },
+      {
+        "n": 4,
+        "title": "Verify by-pointer worked — draw that too",
+        "detail": "Verify the by-pointer version worked, and draw it — the arrow is the whole difference:\n\n```text\nBY POINTER — the function reaches into main's frame\n\nmain's frame                    swap_by_pointer's frame\n+-------+-------+ <-- &x ------ +-------+\n| x = 1 | y = 2 | <-- &y ------ | a | b |   a holds &x, b holds &y\n+-------+-------+               +---+---+   *a IS x.  *b IS y.\n   changed by *a, *b                dies with the frame — the writes already landed\n```",
+        "command": null
+      },
+      {
+        "n": 5,
+        "title": "Write the array walk without []",
+        "detail": "Part 2 — walk an array without `[]`. The walk uses only `p + i` and `*`; `&a[i]` appears solely as the oracle you check against. Write this program:\n\n```c\n#include <stdio.h>\n\nint main(void)\n{\n    int a[5] = {10, 20, 30, 40, 50};\n    int *p = a;                    /* a decays to &a[0] (full story in I.5) */\n\n    for (int i = 0; i < 5; i++) {\n        printf(\"p + %d = %p   &a[%d] = %p   value = %d\\n\",\n               i, (void *)(p + i), i, (void *)&a[i], *(p + i));\n    }\n    return 0;\n}\n```",
+        "command": null
+      },
+      {
+        "n": 6,
+        "title": "Compile, run, and compare the address columns",
+        "detail": "Compare the address columns line by line. On the author's machine:\n\n```text\np + 0 = 0x16b922850   &a[0] = 0x16b922850   value = 10\np + 1 = 0x16b922854   &a[1] = 0x16b922854   value = 20\np + 2 = 0x16b922858   &a[2] = 0x16b922858   value = 30\np + 3 = 0x16b92285c   &a[3] = 0x16b92285c   value = 40\np + 4 = 0x16b922860   &a[4] = 0x16b922860   value = 50\n```\n\nEvery `p + i` lands exactly where `&a[i]` does, 4 bytes per step — `sizeof(int)` on this machine. That identity is not a convenience; it is the definition of `[]` in C: `a[i]` *is* `*(a + i)`. I.5 will make you live in that identity; today, confirm it with your own addresses.",
+        "command": null
+      }
+    ],
+    "closingPrompt": "State the rule, one sentence, out loud: a function can change a caller's variable only when the caller hands over its address — and `p + i` is `&a[i]`, always."
+  },
+  "buildTask": {
+    "title": "my_string — hand-rolled string functions",
+    "brief": "From scratch, implement the three functions C programmers have written in interviews and firmware since 1972: `my_strlen`, `my_strcpy`, `my_strcmp`. These exact names matter — they are the contract I.5's string work and Book II.3's safe re-implementation both refer back to.\n\n**File layout.** Two files, one command: `my_string.c` — your implementations, nothing else, no `main`; `test_harness.c` — the scored harness, given in the chapter in full (do not modify it). Build and run: `cc -std=c11 -Wall -Wextra test_harness.c my_string.c -o test && ./test`.\n\n**Interface (exact signatures):**\n\n```c\nsize_t my_strlen(const char *s);\nchar  *my_strcpy(char *dst, const char *src);\nint    my_strcmp(const char *a, const char *b);\n```\n\n`size_t` is the unsigned size type `sizeof` produces (I.2). `const char *` reads \"pointer to characters I promise not to modify\" — the compiler enforces the promise, and it is how a function advertises which pointers it only reads through.\n\n**Behavioural requirements (match libc).** `my_strlen` returns the number of characters before the terminating NUL; the empty string's length is 0. `my_strcpy` copies `src` into `dst` *including the terminating NUL*, and returns `dst`. `my_strcmp` returns zero for equal strings; otherwise the difference of the first differing characters, compared as `unsigned char` — negative when `a` sorts before `b`, positive when after. Strings differing only in the final byte must return the correct sign (`\"abcd\"` vs `\"abce\"`), and a prefix sorts before its extension (`\"abc\"` < `\"abcd\"`).\n\n**Constraint (the point of the exercise):** pointer arithmetic only. No array indexing anywhere in the implementation — not `s[i]`, not `dst[i]`, nothing in brackets. Walk with `s++`, compare with `*a` and `*b`, and let `my_strlen` be the one-subtraction function the exposition promised.\n\n**The harness instruments the destination:** one contiguous block — canary byte, `DST_CAP` (16) bytes of destination, canary byte — with the destination poisoned so a missing NUL is visible. One copy uses `\"firmware\"`; a second uses a source that fills the destination *exactly* (15 chars + NUL), so one byte of overflow kills a canary and fails the run with a nonzero exit. A correct run ends with `ALL TESTS PASS` and exit status 0.",
+    "gate": false,
+    "rubric": [
+      {
+        "id": "libc-behaviour",
+        "criterion": "libc behaviour on the vector set — every `my_strlen`/`my_strcmp` check passes, including the empty string and strings differing only at the last byte",
+        "weight": 1
+      },
+      {
+        "id": "pointer-arithmetic-only",
+        "criterion": "pointer arithmetic only — no `[` or `]` in `my_string.c`; the walk is `p++` and `*p`",
+        "weight": 1
+      },
+      {
+        "id": "strcpy-respects-size",
+        "criterion": "`my_strcpy` respects the declared size — both canary checks pass on both copies: the destination's `DST_CAP` bytes and nothing beyond them",
+        "weight": 1
+      },
+      {
+        "id": "clean-build",
+        "criterion": "clean build — `cc -std=c11 -Wall -Wextra` compiles both files warning-free, and a passing run exits 0",
+        "weight": 1
+      }
+    ],
+    "stretch": [
+      "Add `my_strncmp(const char *a, const char *b, size_t n)` — same contract, but never compare more than `n` characters — and extend the harness to cover the tricky edge: strings equal for `n` bytes that differ at `n + 1`.",
+      "Rebuild the harness with `-fsanitize=address` (a preview of I.7's toolchain) and confirm a deliberately planted off-by-one in your copy loop is caught *by the sanitizer* as well as by the canary — two tripwires for the same bug."
+    ]
+  }
+}

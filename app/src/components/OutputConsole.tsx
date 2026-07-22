@@ -1,5 +1,7 @@
 import { TerminalSquare } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { SanitizerCard } from '@/components/SanitizerCard';
+import { parseSanitizerReport } from '@/lib/sanitizer';
 import type { RunResult } from '@/types/api';
 
 interface OutputConsoleProps {
@@ -20,6 +22,7 @@ function Section({ label, tone, text }: { label: string; tone: string; text: str
 export function OutputConsole({ result, running, error }: OutputConsoleProps) {
   const isArtifactAction =
     result !== null && (result.action === 'preprocess' || result.action === 'assembly' || result.action === 'object');
+  const sanitizerReport = result ? parseSanitizerReport(result.stderr) : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col border-t border-border bg-[#221f1c]">
@@ -85,8 +88,15 @@ export function OutputConsole({ result, running, error }: OutputConsoleProps) {
                   {result.stdout !== null && result.stdout !== '' && (
                     <Section label="stdout" tone="text-stone-200" text={result.stdout} />
                   )}
-                  {result.stderr !== null && result.stderr !== '' && (
-                    <Section label="stderr" tone="text-red-300" text={result.stderr} />
+                  {sanitizerReport && result.stderr !== null ? (
+                    // Structured summary card; the raw report lives inside its
+                    // collapsible "full report" section (one click away).
+                    <SanitizerCard report={sanitizerReport} raw={result.stderr} />
+                  ) : (
+                    result.stderr !== null &&
+                    result.stderr !== '' && (
+                      <Section label="stderr" tone="text-red-300" text={result.stderr} />
+                    )
                   )}
                   {result.compileOk &&
                     (result.stdout ?? '') === '' &&

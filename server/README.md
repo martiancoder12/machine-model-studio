@@ -19,6 +19,7 @@ and a system C toolchain (`cc`, `nm`) on PATH.
 |---|---|
 | `GET /api/content/book1/manifest` | Raw `content/book1/manifest.json` |
 | `GET /api/content/book1/:moduleId` | `{ id, title, markdown }` for a two-digit module id; `404 {"error":"unknown module"}` otherwise |
+| `GET /api/study/book1/:moduleId` | Raw `content/book1/study/<moduleId>.json` (lab walkthrough + build-task rubric); `404 {"error":"no study content"}` when missing or the id is not two digits; `500` if the file holds invalid JSON |
 | `GET /api/workspace/:moduleId/files` | `{ files: [{ path, content }] }` — all files in the module workspace (recursive, dot-entries like `.build/` excluded) |
 | `PUT /api/workspace/:moduleId/file` | Body `{ path, content }`; creates/overwrites with `mkdir -p` semantics → `{ ok: true }` |
 | `DELETE /api/workspace/:moduleId/file?path=<rel>` | Deletes a workspace file → `{ ok: true }`; `404` if missing |

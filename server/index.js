@@ -216,6 +216,23 @@ async function handleManifest(res) {
   }
 }
 
+async function handleStudy(res, moduleId) {
+  if (!MODULE_ID_RE.test(moduleId)) return sendJson(res, 404, { error: 'no study content' });
+  let raw;
+  try {
+    raw = await fsp.readFile(path.join(CONTENT_DIR, 'study', `${moduleId}.json`), 'utf8');
+  } catch {
+    return sendJson(res, 404, { error: 'no study content' });
+  }
+  try {
+    JSON.parse(raw);
+  } catch {
+    return sendJson(res, 500, { error: `study content for module ${moduleId} is not valid JSON` });
+  }
+  res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+  res.end(raw);
+}
+
 async function handleModule(res, moduleId) {
   if (!MODULE_ID_RE.test(moduleId)) return sendJson(res, 404, { error: 'unknown module' });
   let manifest;
@@ -434,6 +451,14 @@ const server = http.createServer(async (req, res) => {
         && segments[0] === 'api' && segments[1] === 'content'
         && segments[2] === 'book1') {
       return await handleModule(res, segments[3]);
+    }
+
+    // /api/study/book1/:moduleId
+    if (req.method === 'GET'
+        && segments.length === 4
+        && segments[0] === 'api' && segments[1] === 'study'
+        && segments[2] === 'book1') {
+      return await handleStudy(res, segments[3]);
     }
 
     // /api/workspace/:moduleId/files | /api/workspace/:moduleId/file

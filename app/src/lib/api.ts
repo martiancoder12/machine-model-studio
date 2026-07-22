@@ -11,6 +11,7 @@ import type {
   ModuleContent,
   RunRequest,
   RunResult,
+  StudyContent,
   WorkspaceFile,
   WorkspaceFiles,
 } from '@/types/api';
@@ -55,6 +56,8 @@ const realApi = {
   getManifest: () => request<Manifest>('/api/content/book1/manifest'),
 
   getModule: (moduleId: string) => request<ModuleContent>(`/api/content/book1/${moduleId}`),
+
+  getStudy: (moduleId: string) => request<StudyContent>(`/api/study/book1/${moduleId}`),
 
   getFiles: (moduleId: string) => request<WorkspaceFiles>(`/api/workspace/${moduleId}/files`),
 
@@ -155,6 +158,74 @@ const mockApi: Api = {
     };
   },
 
+  async getStudy(moduleId): Promise<StudyContent> {
+    await delay();
+    // Modules 00/09 legitimately have no study content (API.md §v2).
+    if (moduleId === '00' || moduleId === '09') {
+      throw new ApiError(404, 'no study content');
+    }
+    const isGate = moduleId === '07';
+    const isCapstone = moduleId === '08';
+    return {
+      moduleId,
+      lab: {
+        summary: 'Watch the toolchain turn source into a running process (mock lab).',
+        steps: [
+          {
+            n: 1,
+            title: 'Compile with warnings on',
+            detail:
+              'Compile `main.c` exactly the way the studio does: `cc -std=c11 -Wall -Wextra main.c -o main`. ' +
+              'Any warning is a message from the machine — read it before you run anything.',
+            command: 'cc -std=c11 -Wall -Wextra main.c -o main',
+          },
+          {
+            n: 2,
+            title: 'Run it and observe argv',
+            detail:
+              'Run the binary with two arguments and note that `argc` counts the program name itself. ' +
+              'The array `argv` is the process talking back to you.',
+            command: './main 100 C',
+          },
+          {
+            n: 3,
+            title: 'Peek at the assembly',
+            detail:
+              'Generate assembly with `-S` and find the `call` to `printf`. You do not need to read every ' +
+              'line — just confirm the function call you wrote survives into machine code.',
+            command: 'cc -std=c11 -S main.c',
+          },
+        ],
+        closingPrompt:
+          'In one sentence: what does the compiler guarantee about your source, and what does it not guarantee?',
+      },
+      buildTask: {
+        title: isCapstone
+          ? 'capstone · read and fix a real UB program'
+          : isGate
+            ? 'gate · multi-file temperature converter'
+            : 'temperature converter',
+        brief:
+          'Write a program that reads a number and a unit letter (`C` or `F`) from `argv` and prints the ' +
+          'converted temperature with **two decimal places**.\n\n' +
+          '- exit code `0` on success, `1` with a usage line on bad input\n' +
+          '- no warnings under `cc -std=c11 -Wall -Wextra`\n\n' +
+          (isCapstone ? '_Capstone: this is the integrative task for Book I._' : ''),
+        gate: isGate,
+        rubric: [
+          { id: 'compiles', criterion: 'Compiles warning-free under cc -Wall -Wextra', weight: 1 },
+          { id: 'converts', criterion: 'C ↔ F conversions are numerically correct', weight: 2 },
+          { id: 'input', criterion: 'Bad input exits 1 with a usage message on stderr', weight: 1 },
+          { id: 'style', criterion: 'Names and structure a stranger could follow', weight: 1 },
+        ],
+        stretch: [
+          'Accept Kelvin (`K`) as a third unit',
+          'Read the value from stdin when argv is empty',
+        ],
+      },
+    };
+  },
+
   async getFiles(moduleId): Promise<WorkspaceFiles> {
     await delay();
     return { files: mockModuleFiles(moduleId).map((f) => ({ ...f })) };
@@ -181,15 +252,41 @@ const mockApi: Api = {
   async run(body): Promise<RunResult> {
     await delay(350);
     if (body.action === 'build-run') {
+      const stdout = `hello, machine — argc = ${body.argv.length + 1}\n${body.argv
+        .map((a, i) => `argv[${i + 1}] = ${a}`)
+        .join('\n')}${body.argv.length ? '\n' : ''}${body.stdin ? `(stdin was: ${body.stdin.split('\n')[0]}…)\n` : ''}`;
+      // With sanitizers on, emit a realistic ASan + UBSan report so the
+      // sanitizer summary card can be exercised without the backend.
+      if (body.flags.sanitizers) {
+        return {
+          ok: true,
+          action: body.action,
+          compileOk: true,
+          compileDiagnostics: '',
+          exitCode: 1,
+          stdout,
+          stderr: [
+            `${body.file}:9:12: runtime error: signed integer overflow: 2147483647 + 1 cannot be represented in type 'int'`,
+            '==61234==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x6020000000f8 at pc 0x000100a3c2b4',
+            'READ of size 4 at 0x6020000000f8 thread T0',
+            `    #0 0x100a3c2b0 in main ${body.file}:9:12`,
+            '    #1 0x100a3c4f8 in start+0x1f8',
+            '',
+            'SUMMARY: AddressSanitizer: heap-buffer-overflow main.c:9:12 in main',
+            'ABORTING',
+          ].join('\n'),
+          timedOut: false,
+          durationMs: 58,
+          artifact: null,
+        };
+      }
       return {
         ok: true,
         action: body.action,
         compileOk: true,
         compileDiagnostics: `${body.file}:7:5: warning: mock warning, backend not running [-Wmock]`,
         exitCode: 0,
-        stdout: `hello, machine — argc = ${body.argv.length + 1}\n${body.argv
-          .map((a, i) => `argv[${i + 1}] = ${a}`)
-          .join('\n')}${body.argv.length ? '\n' : ''}${body.stdin ? `(stdin was: ${body.stdin.split('\n')[0]}…)\n` : ''}`,
+        stdout,
         stderr: '',
         timedOut: false,
         durationMs: 42,

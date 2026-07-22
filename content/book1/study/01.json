@@ -1,0 +1,83 @@
+{
+  "moduleId": "01",
+  "lab": {
+    "summary": "Drive one five-line program through all four pipeline stages by hand, then break it three ways and learn to name which stage is speaking in every diagnostic.",
+    "steps": [
+      {
+        "n": 1,
+        "title": "Rebuild the pipeline by hand",
+        "detail": "Start from a fresh `hello.c` — the five-line cold-open version: `#include <stdio.h>`, then `int main(void) { printf(\"hello, machine\\n\"); }`. Run each stage separately and confirm each artifact exists on disk: `hello.i` (preprocessed), `hello.s` (assembly), `hello.o` (object file), then the linked executable.",
+        "command": "cc -std=c11 -E hello.c -o hello.i\ncc -std=c11 -S hello.i -o hello.s\ncc -std=c11 -c hello.s -o hello.o\ncc hello.o -o hello\n./hello"
+      },
+      {
+        "n": 2,
+        "title": "Open hello.i and find your string",
+        "detail": "The grep should land near the last line (line 570 of 571 on the author's machine). Now scroll the top: everything before your code is `stdio.h` and its includes, expanded inline. How many lines of your program did you actually write?",
+        "command": "grep -n \"hello, machine\" hello.i"
+      },
+      {
+        "n": 3,
+        "title": "Open hello.s and find your string again",
+        "detail": "Your string is at line 23 on the author's machine, as `.asciz \"hello, machine\\n\"` — `asciz` is \"ASCII, zero-terminated\", the assembler's spelling of a C string. Also find `_main`, the `bl _printf` call, and the `mov w0, #0` that becomes your exit status.",
+        "command": "grep -n \"hello, machine\" hello.s"
+      },
+      {
+        "n": 4,
+        "title": "Interrogate the object file",
+        "detail": "Confirm `_main` is `T` (defined here, in the text section) and `_printf` is `U` (undefined — a promise the linker keeps later). Then link and run. You have now watched one string literal survive four representations.",
+        "command": "nm hello.o"
+      },
+      {
+        "n": 5,
+        "title": "Break it: missing semicolon",
+        "detail": "Delete the semicolon after the `printf` call in `hello.c` and compile. **Predict first: which stage speaks?** Expected diagnostic:\n\n```text\nhello.c:4:31: error: expected ';' after expression\n    4 |     printf(\"hello, machine\\n\")\n      |                               ^\n      |                               ;\n1 error generated.\n```\n\nThe compiler — stage two. Syntax is its job. Note the caret and the offered fix. For contrast, run `cc -E` on the same broken file: the preprocessor emits 571 lines without complaint. It never looks at your syntax.",
+        "command": null
+      },
+      {
+        "n": 6,
+        "title": "Break it: missing declaration",
+        "detail": "Use a variable you never declared:\n\n```c\n#include <stdio.h>\n\nint main(void)\n{\n    message = 42;\n    printf(\"%d\\n\", message);\n}\n```\n\nExpected diagnostic:\n\n```text\nbreak2.c:5:5: error: use of undeclared identifier 'message'\nbreak2.c:6:20: error: use of undeclared identifier 'message'\n2 errors generated.\n```\n\nStage two again — declarations-before-use is a language rule, and the compiler is the stage that knows the language. Note it reports *both* uses, not just the first: it keeps reading after an error to tell you everything it can.",
+        "command": null
+      },
+      {
+        "n": 7,
+        "title": "Break it: wrong argument count",
+        "detail": "Put the `printf` contract out of balance both ways:\n\n```c\n#include <stdio.h>\n\nint main(void)\n{\n    int a = 1;\n    printf(\"%d %d\\n\", a);\n    printf(\"%d\\n\", a, 99);\n}\n```\n\nExpected diagnostics — **warnings, not errors**: `more '%' conversions than data arguments [-Wformat-insufficient-args]` and `data argument not used by format string [-Wformat-extra-args]`. Exit status 0, binary produced. Run it: the first line's second number is garbage — different garbage on every run (ASLR again; your number will not match the book's): `%d` with no argument reads whatever bytes the call left in reach. The second line shows the benign direction — extra arguments are silently dropped. Same stage (the compiler, `-Wformat`), completely different severity. This is why the book treats warnings as errors-in-waiting.",
+        "command": "./break3"
+      },
+      {
+        "n": 8,
+        "title": "Name the stage",
+        "detail": "Collect the diagnostics you just produced — the missing-header `fatal error`, `expected ';'`, `undeclared identifier`, the two `-Wformat` warnings, and (from the pipeline section) `Undefined symbols`. Cover the filenames and read only the wording. You should be able to assign every one to its stage: expansion problems to the preprocessor, language problems to the compiler, missing-name problems to the linker.",
+        "command": null
+      }
+    ],
+    "closingPrompt": "State the rule: every diagnostic is one stage of the pipeline complaining about one specific input — name the speaking stage first, then fix what that stage actually reads."
+  },
+  "buildTask": {
+    "title": "tempconv — a temperature converter driven from the command line",
+    "brief": "**Interface (exact):** `./tempconv <value> <scale>`, where `<scale>` is `C` or `F`. `C` means the input value is Celsius and you print the Fahrenheit equivalent; `F` means Fahrenheit in, Celsius out. The output is one line: the converted value to exactly one decimal place, a space, and the target scale letter — `./tempconv 100 C` prints `212.0 F`; `./tempconv 32 F` prints `0.0 C`.\n\n**Behavioural requirements.** Correct conversion both directions: `F = C × 9/5 + 32` and its inverse. Watch your arithmetic: in C, `9 / 5` of two `int`s is `1` — make the division happen in `double`. Known values must hold exactly: 0 °C = 32 °F, 100 °C = 212 °F, and the crossover point, −40 °C = −40 °F. Malformed input — wrong argument count, a non-numeric value, a scale letter other than `C`/`F` — prints a usage message and exits nonzero (`return 1;` from `main`). Not a crash, not a silent zero, not a successful-looking exit: scripts that call your program must be able to tell it failed. Arguments arrive as `argv[1]` and `argv[2]`; declare `main(int argc, char *argv[])` — `argc` counts the program name too, so a well-formed call has `argc == 3`. The tool you do not have yet is turning `argv[1]` (a string) into a `double` *with error detection*: that is `strtod` from `<stdlib.h>`, which reports where parsing stopped through its second argument — a `12` parses cleanly, `twelve` parses nothing, `12abc` stops early. Reading `man strtod` is part of the task; reading manuals is the job.\n\n**Constraints.** C11. Compiles warning-free under `cc -std=c11 -Wall -Wextra`. No libraries beyond the C standard library.",
+    "gate": false,
+    "rubric": [
+      {
+        "id": "compiles",
+        "criterion": "Compiles warning-free under `cc -Wall -Wextra`",
+        "weight": 1
+      },
+      {
+        "id": "converts",
+        "criterion": "Converts both directions correctly on the known values (0 °C = 32 °F, 100 °C = 212 °F, −40 °C = −40 °F)",
+        "weight": 2
+      },
+      {
+        "id": "rejects",
+        "criterion": "Rejects malformed input (missing or non-numeric arguments) with a usage message, not a crash",
+        "weight": 1
+      }
+    ],
+    "stretch": [
+      "Accept lowercase `c` / `f` as scale flags.",
+      "Add a third scale, `K` (Kelvin), converting to and from it in both directions, same one-decimal output contract."
+    ]
+  }
+}

@@ -83,3 +83,40 @@ Runtime crash → `ok: true, compileOk: true, exitCode: 139` (signal = 128+n); `
 ## Progress (MVP, frontend-local)
 Module progress state lives in the browser (localStorage) for MVP — no backend endpoint.
 Shape: `{ "01": { "status": "not-started | reading | working | done" }, ... }`.
+
+---
+
+# v2 addition (Phase 2) — Study content endpoint
+
+Structured lab walkthroughs + build-task rubrics, authored from the chapters.
+
+### GET /api/study/book1/:moduleId
+Serves `content/book1/study/<moduleId>.json`.
+→ `200` the JSON below · `404 { "error": "no study content" }` (valid for modules 00/09).
+
+### Study JSON schema (`content/book1/study/<id>.json`)
+```json
+{
+  "moduleId": "01",
+  "lab": {
+    "summary": "one-line purpose of the lab",
+    "steps": [
+      { "n": 1, "title": "short imperative", "detail": "markdown, inline code ok",
+        "command": "optional single copyable shell command or null" }
+    ],
+    "closingPrompt": "the one-sentence rule the chapter asks the learner to state"
+  },
+  "buildTask": {
+    "title": "temperature converter",
+    "brief": "markdown paragraph(s): the spec in full",
+    "gate": false,
+    "rubric": [
+      { "id": "compiles", "criterion": "Compiles warning-free under cc -Wall -Wextra", "weight": 1 }
+    ],
+    "stretch": ["optional stretch goal", "..."]
+  }
+}
+```
+Rules: content is faithful to the chapter's Lab and Build Task sections (steps in the
+chapter's order, rubric criteria verbatim from the chapter's scoring criteria);
+`gate: true` only for module 07 (L3 gate); capstone marked via moduleId "08".

@@ -12,6 +12,9 @@ import { RunBar } from './RunBar';
 
 interface WorkspacePanelProps {
   moduleId: string | null;
+  /** Called when a run completes successfully — used to auto-promote module
+   * progress to "working" (never demotes). */
+  onRan?: () => void;
 }
 
 function isValidPath(p: string): boolean {
@@ -24,7 +27,7 @@ function isValidPath(p: string): boolean {
   );
 }
 
-export function WorkspacePanel({ moduleId }: WorkspacePanelProps) {
+export function WorkspacePanel({ moduleId, onRan }: WorkspacePanelProps) {
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [dirtyPaths, setDirtyPaths] = useState<Set<string>>(new Set());
@@ -291,6 +294,7 @@ export function WorkspacePanel({ moduleId }: WorkspacePanelProps) {
           onResult={(r) => {
             setRunError(null);
             setRunResult(r);
+            onRan?.();
           }}
           onError={(msg) => {
             setRunResult(null);

@@ -57,6 +57,43 @@ export interface RunResult {
   artifact: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// v2 (Phase 2) — Study content (API.md §GET /api/study/book1/:moduleId)
+// ---------------------------------------------------------------------------
+
+export interface LabStep {
+  n: number;
+  title: string;
+  detail: string; // markdown, inline code ok
+  command: string | null; // optional single copyable shell command
+}
+
+export interface Lab {
+  summary: string;
+  steps: LabStep[];
+  closingPrompt: string;
+}
+
+export interface RubricCriterion {
+  id: string;
+  criterion: string;
+  weight: number;
+}
+
+export interface BuildTask {
+  title: string;
+  brief: string; // markdown
+  gate: boolean; // true only for module 07 (L3 gate)
+  rubric: RubricCriterion[];
+  stretch: string[];
+}
+
+export interface StudyContent {
+  moduleId: string;
+  lab: Lab;
+  buildTask: BuildTask;
+}
+
 // Progress (API.md §Progress — frontend-local, localStorage)
 export type ModuleStatus = 'not-started' | 'reading' | 'working' | 'done';
 

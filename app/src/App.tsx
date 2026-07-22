@@ -3,7 +3,7 @@ import { Group, Panel, Separator } from 'react-resizable-panels';
 import { Badge } from '@/components/ui/badge';
 import { BookReader } from '@/components/BookReader';
 import { ModuleSidebar } from '@/components/ModuleSidebar';
-import { WorkspacePanel } from '@/components/WorkspacePanel';
+import { StudyPanel } from '@/components/StudyPanel';
 import { api, IS_MOCK_API } from '@/lib/api';
 import {
   cycleStatus,
@@ -64,6 +64,21 @@ export default function App() {
     [progress, updateProgress],
   );
 
+  // Running code auto-promotes a module to "working" — never demotes
+  // (a module already "done" stays done).
+  const handleRan = useCallback(
+    (moduleId: string) => {
+      setProgress((prev) => {
+        const current = getStatus(prev, moduleId);
+        if (current === 'working' || current === 'done') return prev;
+        const next = setStatus(prev, moduleId, 'working');
+        saveProgress(next);
+        return next;
+      });
+    },
+    [],
+  );
+
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       <Group orientation="horizontal" className="flex-1">
@@ -89,7 +104,10 @@ export default function App() {
         <Separator className="w-px bg-border transition-colors hover:bg-ring/40" />
 
         <Panel defaultSize={35} minSize={24}>
-          <WorkspacePanel moduleId={activeModuleId} />
+          <StudyPanel
+            moduleId={activeModuleId}
+            onRan={activeModuleId ? () => handleRan(activeModuleId) : undefined}
+          />
         </Panel>
       </Group>
 
