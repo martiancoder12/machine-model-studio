@@ -1,0 +1,17 @@
+{
+  "book": "Book I — C: The Machine Model",
+  "levelRange": "L0 → L3",
+  "tier": "Foundations",
+  "modules": [
+    { "id": "00", "file": "00_front_matter.md", "title": "Front Matter", "marker": null, "level": null },
+    { "id": "01", "file": "01_hello_machine.md", "title": "I.1 · Hello, machine", "marker": null, "level": "L0 → L1" },
+    { "id": "02", "file": "02_values_memory.md", "title": "I.2 · Values and the shape of memory", "marker": null, "level": "L0 → L1" },
+    { "id": "03", "file": "03_pointers.md", "title": "I.3 · Pointers and addresses", "marker": "make-or-break", "level": "L1" },
+    { "id": "04", "file": "04_heap.md", "title": "I.4 · The heap and manual memory", "marker": null, "level": "L1" },
+    { "id": "05", "file": "05_arrays_strings.md", "title": "I.5 · Arrays, strings, buffers", "marker": null, "level": "L1 → L2" },
+    { "id": "06", "file": "06_structs.md", "title": "I.6 · Structs and composing data", "marker": null, "level": "L2" },
+    { "id": "07", "file": "07_toolchain.md", "title": "I.7 · Multi-file programs and the real toolchain", "marker": "L3 gate", "level": "L2 → L3" },
+    { "id": "08", "file": "08_ub_capstone.md", "title": "I.8 · Undefined behaviour and reading real C", "marker": "capstone", "level": "L2 → L3" },
+    { "id": "09", "file": "09_back_matter.md", "title": "Back Matter · Gate Checklist", "marker": null, "level": null }
+  ]
+}

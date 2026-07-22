@@ -1,0 +1,13 @@
+{
+  "name": "machine-model-studio-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local exec/content backend for Machine Model Studio (Book I: C).",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

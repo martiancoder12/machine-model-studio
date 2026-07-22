@@ -1,0 +1,292 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Warm-neutral "reading room" palette — low saturation, no gradients */
+    --background: 40 22% 96%;
+    --foreground: 30 10% 16%;
+    --card: 40 28% 98%;
+    --card-foreground: 30 10% 16%;
+    --popover: 40 28% 98%;
+    --popover-foreground: 30 10% 16%;
+    --primary: 28 12% 24%;
+    --primary-foreground: 40 30% 96%;
+    --secondary: 38 15% 91%;
+    --secondary-foreground: 28 12% 24%;
+    --muted: 38 13% 91%;
+    --muted-foreground: 30 6% 42%;
+    --accent: 36 20% 88%;
+    --accent-foreground: 28 14% 22%;
+    --destructive: 8 52% 42%;
+    --destructive-foreground: 40 30% 96%;
+    --border: 35 12% 84%;
+    --input: 35 12% 80%;
+    --ring: 28 18% 40%;
+    --radius: 0.5rem;
+    --sidebar-background: 38 18% 93%;
+    --sidebar-foreground: 30 8% 26%;
+    --sidebar-primary: 28 12% 24%;
+    --sidebar-primary-foreground: 40 30% 96%;
+    --sidebar-accent: 36 20% 87%;
+    --sidebar-accent-foreground: 28 14% 22%;
+    --sidebar-border: 35 12% 84%;
+    --sidebar-ring: 28 18% 40%;
+  }
+
+  .dark {
+    --background: 30 8% 12%;
+    --foreground: 40 20% 92%;
+    --card: 30 8% 14%;
+    --card-foreground: 40 20% 92%;
+    --popover: 30 8% 14%;
+    --popover-foreground: 40 20% 92%;
+    --primary: 40 20% 90%;
+    --primary-foreground: 30 10% 14%;
+    --secondary: 30 6% 20%;
+    --secondary-foreground: 40 20% 92%;
+    --muted: 30 6% 20%;
+    --muted-foreground: 35 8% 62%;
+    --accent: 30 7% 24%;
+    --accent-foreground: 40 20% 92%;
+    --destructive: 8 45% 45%;
+    --destructive-foreground: 40 20% 96%;
+    --border: 30 6% 24%;
+    --input: 30 6% 26%;
+    --ring: 35 12% 60%;
+    --sidebar-background: 30 8% 13%;
+    --sidebar-foreground: 40 14% 85%;
+    --sidebar-primary: 40 20% 90%;
+    --sidebar-primary-foreground: 30 10% 14%;
+    --sidebar-accent: 30 7% 22%;
+    --sidebar-accent-foreground: 40 20% 92%;
+    --sidebar-border: 30 6% 24%;
+    --sidebar-ring: 35 12% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family:
+      -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Book reader typography — a calm reading surface.
+ * ------------------------------------------------------------------------- */
+
+@layer components {
+  .book-reader {
+    font-family: Charter, 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+    font-size: 1.05rem;
+    line-height: 1.75;
+    color: hsl(var(--foreground));
+  }
+
+  .book-reader-header {
+    margin-bottom: 2.25rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+
+  .book-reader-kicker {
+    font-family: inherit;
+    font-size: 0.72rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+    margin-bottom: 0.5rem;
+  }
+
+  .book-reader-header h1 {
+    font-size: 1.9rem;
+    line-height: 1.25;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .book-reader h2 {
+    font-size: 1.4rem;
+    font-weight: 600;
+    margin: 2.25rem 0 0.75rem;
+    line-height: 1.3;
+  }
+
+  .book-reader h3 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 1.75rem 0 0.5rem;
+  }
+
+  .book-reader h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 1.5rem 0 0.5rem;
+  }
+
+  .book-reader p {
+    margin: 1rem 0;
+  }
+
+  .book-reader ul,
+  .book-reader ol {
+    margin: 1rem 0;
+    padding-left: 1.5rem;
+  }
+
+  .book-reader ul {
+    list-style: disc;
+  }
+
+  .book-reader ol {
+    list-style: decimal;
+  }
+
+  .book-reader li {
+    margin: 0.35rem 0;
+  }
+
+  .book-reader blockquote {
+    margin: 1.25rem 0;
+    padding: 0.25rem 0 0.25rem 1rem;
+    border-left: 3px solid hsl(var(--accent-foreground) / 0.35);
+    color: hsl(var(--muted-foreground));
+    font-style: italic;
+  }
+
+  .book-reader hr {
+    margin: 2rem 0;
+    border-color: hsl(var(--border));
+  }
+
+  .book-reader a {
+    color: hsl(28 35% 36%);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .book-reader strong {
+    font-weight: 650;
+  }
+
+  /* Inline code — quiet warm chip */
+  .book-inline-code {
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    background: hsl(36 20% 89%);
+    border: 1px solid hsl(35 12% 82%);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+    white-space: nowrap;
+  }
+
+  /* Fenced code block — dark slab with language label */
+  .book-codeblock {
+    margin: 1.5rem 0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #262320;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+  }
+
+  .book-codeblock figcaption {
+    display: flex;
+    align-items: center;
+    padding: 0.35rem 0.9rem;
+    background: rgb(255 255 255 / 0.04);
+    border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  }
+
+  .book-codeblock-lang {
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #a89f94;
+  }
+
+  .book-codeblock pre {
+    margin: 0;
+    padding: 0.9rem 1rem;
+    overflow-x: auto;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    line-height: 1.65;
+    color: #ece7e0;
+  }
+
+  .book-codeblock pre code {
+    font-family: inherit;
+    background: transparent;
+    padding: 0;
+    border: none;
+    white-space: pre;
+  }
+
+  /* Tables */
+  .book-table-wrap {
+    margin: 1.5rem 0;
+    overflow-x: auto;
+    border: 1px solid hsl(var(--border));
+    border-radius: 8px;
+    background: hsl(var(--card));
+  }
+
+  .book-table-wrap table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+  }
+
+  .book-table-wrap th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+    padding: 0.6rem 0.9rem;
+    border-bottom: 1px solid hsl(var(--border));
+    background: hsl(38 15% 93%);
+  }
+
+  .book-table-wrap td {
+    padding: 0.55rem 0.9rem;
+    border-bottom: 1px solid hsl(var(--border));
+    vertical-align: top;
+  }
+
+  .book-table-wrap tr:last-child td {
+    border-bottom: none;
+  }
+
+  /* Console (right panel output) */
+  .console-section {
+    margin-bottom: 0.9rem;
+  }
+
+  .console-label {
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    opacity: 0.75;
+    margin-bottom: 0.25rem;
+  }
+
+  .console-text {
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+  }
+}
