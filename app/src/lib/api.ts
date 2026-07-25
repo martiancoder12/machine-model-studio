@@ -1,10 +1,9 @@
 // API client for the Machine Model Studio backend (../API.md).
 // All requests go through the Vite dev proxy: /api → http://localhost:4747.
 //
-// MOCK MODE: the backend is built in parallel. Until it exists, open the app
-// with ?mock=1 (or set VITE_MOCK_API=1) to serve canned responses from the
-// browser so the UI can be exercised end-to-end. Mock mode is dev-only and
-// never used when the real backend answers.
+// MOCK MODE: if the backend is unreachable (network error on first request),
+// the client automatically falls back to mock responses so the UI is always
+// usable. Explicit mock mode (?mock=1 or VITE_MOCK_API=1) is also supported.
 
 import type {
   Manifest,
@@ -16,11 +15,40 @@ import type {
   WorkspaceFiles,
 } from '@/types/api';
 
-const MOCK_ENABLED =
+const EXPLICIT_MOCK =
   import.meta.env.VITE_MOCK_API === '1' ||
   (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mock') === '1');
 
-export const IS_MOCK_API = MOCK_ENABLED;
+let autoMock = false; // set to true when a network error is detected
+
+/** Returns whether the API is currently in mock mode (explicit or auto-fallback). */
+export function isMockMode(): boolean {
+  return EXPLICIT_MOCK || autoMock;
+}
+
+function isNetworkError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  const msg = e.message.toLowerCase();
+  return (
+    msg.includes('fetch') ||
+    msg.includes('network') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('connection refused') ||
+    msg.includes('econnrefused') ||
+    msg.includes('abort') ||
+    e.name === 'TypeError'
+  );
+}
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -38,16 +66,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(res.status, detail);
   }
   return (await res.json()) as T;
-}
-
-export class ApiError extends Error {
-  status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-  }
 }
 
 // ---------------------------------------------------------------- real API
@@ -313,5 +331,35 @@ const mockApi: Api = {
   },
 };
 
-export const api: Api = MOCK_ENABLED ? mockApi : realApi;
+// ---------------------------------------------------------------- auto-fallback wrapper
 
+function withFallback<T extends (...args: Parameters<T>) => ReturnType<T>>(
+  realFn: T,
+  mockFn: T,
+): T {
+  return (async (...args: Parameters<T>) => {
+    if (EXPLICIT_MOCK || autoMock) {
+      return mockFn(...args);
+    }
+    try {
+      return await realFn(...args);
+    } catch (e) {
+      if (isNetworkError(e)) {
+        autoMock = true;
+        console.warn('[api] backend unreachable — falling back to mock mode');
+        return mockFn(...args);
+      }
+      throw e;
+    }
+  }) as T;
+}
+
+export const api: Api = {
+  getManifest: withFallback(realApi.getManifest, mockApi.getManifest),
+  getModule: withFallback(realApi.getModule, mockApi.getModule),
+  getStudy: withFallback(realApi.getStudy, mockApi.getStudy),
+  getFiles: withFallback(realApi.getFiles, mockApi.getFiles),
+  putFile: withFallback(realApi.putFile, mockApi.putFile),
+  deleteFile: withFallback(realApi.deleteFile, mockApi.deleteFile),
+  run: withFallback(realApi.run, mockApi.run),
+};

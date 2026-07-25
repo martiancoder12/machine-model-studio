@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { BookReader } from '@/components/BookReader';
 import { ModuleSidebar } from '@/components/ModuleSidebar';
 import { StudyPanel } from '@/components/StudyPanel';
-import { api, IS_MOCK_API } from '@/lib/api';
+import { api, isMockMode } from '@/lib/api';
 import {
   cycleStatus,
   getStatus,
@@ -20,12 +20,14 @@ export default function App() {
   const [manifestError, setManifestError] = useState<string | null>(null);
   const [activeModuleId, setActiveModuleId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressMap>(() => loadProgress());
+  const [mockMode, setMockMode] = useState(false);
 
   useEffect(() => {
     api
       .getManifest()
       .then((m) => {
         setManifest(m);
+        setMockMode(isMockMode());
         // Open the first real chapter (skip front matter) on first launch.
         setActiveModuleId((prev) => prev ?? m.modules[1]?.id ?? m.modules[0]?.id ?? null);
       })
@@ -111,7 +113,7 @@ export default function App() {
         </Panel>
       </Group>
 
-      {IS_MOCK_API && (
+      {mockMode && (
         <div className="pointer-events-none fixed bottom-3 left-3 z-50">
           <Badge variant="outline" className="pointer-events-auto border-amber-700/40 bg-amber-100 text-amber-900">
             mock API — backend offline (?mock=1)
