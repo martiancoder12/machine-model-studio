@@ -116,7 +116,7 @@ function mockModuleFiles(moduleId: string): WorkspaceFile[] {
 
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 
-const mockApi: Api = {
+export const mockApi: Api = {
   async getManifest(): Promise<Manifest> {
     await delay();
     return {
@@ -331,6 +331,8 @@ const mockApi: Api = {
   },
 };
 
+import { staticApi } from './staticApi';
+
 // ---------------------------------------------------------------- auto-fallback wrapper
 
 function withFallback<T extends (...args: Parameters<T>) => ReturnType<T>>(
@@ -354,7 +356,19 @@ function withFallback<T extends (...args: Parameters<T>) => ReturnType<T>>(
   }) as T;
 }
 
-export const api: Api = {
+// ---------------------------------------------------------------- static mode (public deployment)
+
+// VITE_STATIC_CONTENT=1 selects the static-content API (see staticApi.ts):
+// real Book I content bundled at build time, simulated compilation. Used
+// for the Vercel deployment, where the local exec backend cannot run.
+const STATIC_CONTENT = import.meta.env.VITE_STATIC_CONTENT === '1';
+
+/** True when the app is serving bundled static content (public deployment). */
+export function isStaticMode(): boolean {
+  return STATIC_CONTENT;
+}
+
+const fallbackApi: Api = {
   getManifest: withFallback(realApi.getManifest, mockApi.getManifest),
   getModule: withFallback(realApi.getModule, mockApi.getModule),
   getStudy: withFallback(realApi.getStudy, mockApi.getStudy),
@@ -363,3 +377,6 @@ export const api: Api = {
   deleteFile: withFallback(realApi.deleteFile, mockApi.deleteFile),
   run: withFallback(realApi.run, mockApi.run),
 };
+
+// Static mode takes precedence over everything (no backend exists there).
+export const api: Api = STATIC_CONTENT ? staticApi : fallbackApi;

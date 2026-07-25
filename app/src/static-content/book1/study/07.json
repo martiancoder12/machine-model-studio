@@ -1,0 +1,124 @@
+{
+  "moduleId": "07",
+  "lab": {
+    "summary": "Guided, three parts: the three-file build driven by a hand-written Makefile with touch-selective rebuilds, a deliberate heap overflow read under AddressSanitizer, and a segfault walked through the debugger frame by frame.",
+    "steps": [
+      {
+        "n": 1,
+        "title": "Recreate the four files",
+        "detail": "Part 1 — the three-file build, by Makefile. In a fresh directory, recreate the four files from the cold open: `readline.h` (guarded, declares `struct line_buf`, `read_line`, `read_line_buf`), `readline.c` (the I.5 bounded reader plus `read_line_buf`), `prompt.h` (guarded, declares `prompt_and_read`), and `main.c` (the prompt function plus `main`).",
+        "command": null
+      },
+      {
+        "n": 2,
+        "title": "Write the Makefile and check the tabs",
+        "detail": "Write the Makefile from the `make` section, exactly as shown: `CC`/`CFLAGS` variables (`-std=c11 -Wall -Wextra -g`), `demo: main.o readline.o`, each object depending on its `.c` **and every header it pastes in**, and a `clean` target. Recipes must be tab-indented — a real TAB, not spaces. Check: `cat -A Makefile` shows tabs as `^I`.",
+        "command": "cat -A Makefile"
+      },
+      {
+        "n": 3,
+        "title": "Run make twice",
+        "detail": "Expect the three compile/link lines from the verified transcript (compile `main.c`, compile `readline.c`, link `demo`). Run `make` again: expect `` `demo' is up to date. `` — nothing rebuilt.",
+        "command": "make"
+      },
+      {
+        "n": 4,
+        "title": "Verify touch-selective rebuilds",
+        "detail": "`touch readline.h && make`: expect **both** objects rebuilt and a relink (both depend on `readline.h`). `touch prompt.h && make`: expect **only `main.o`** rebuilt — `readline.o` is left alone because none of its prerequisites changed. If this selectivity doesn't match, your header prerequisites are wrong — fix them before continuing; this is the skill.",
+        "command": "touch readline.h && make\ntouch prompt.h && make"
+      },
+      {
+        "n": 5,
+        "title": "Run the demo",
+        "detail": "Expect `type something: you typed: lab part 1`.",
+        "command": "echo \"lab part 1\" | ./demo"
+      },
+      {
+        "n": 6,
+        "title": "Write a deliberate heap overflow",
+        "detail": "Part 2 — a deliberate heap overflow, read under ASan. Write this program, deliberately wrong:\n\n```c\n#include <stdio.h>\n#include <stdlib.h>\n\nint main(void)\n{\n    char *buf = malloc(16);\n    if (buf == NULL)\n        return 1;\n\n    for (size_t i = 0; i < 20; i++)\n        buf[i] = 'A';\n\n    printf(\"wrote 20 bytes into a 16-byte block\\n\");\n    free(buf);\n    return 0;\n}\n```",
+        "command": null
+      },
+      {
+        "n": 7,
+        "title": "Build and run under ASan at -O0",
+        "detail": "Build and run under AddressSanitizer at `-O0`, where every operation executes as written and visibility is maximum.",
+        "command": "cc -std=c11 -Wall -Wextra -g -O0 -fsanitize=address overflow.c -o overflow\n./overflow"
+      },
+      {
+        "n": 8,
+        "title": "Read the ASan report",
+        "detail": "The real report (abridged):\n\n```text\n==35638==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x6020000000c0 ...\nWRITE of size 1 at 0x6020000000c0 thread T0\n    #0 0x00010267c898 in main overflow.c:11\n\n0x6020000000c0 is located 0 bytes after 16-byte region [0x6020000000b0,0x6020000000c0)\nallocated by thread T0 here:\n    #0 0x000102fbd164 in malloc+0x78 ...\n    #1 0x00010267c804 in main overflow.c:6\n\nSUMMARY: AddressSanitizer: heap-buffer-overflow overflow.c:11 in main\n==35638==ABORTING\n```",
+        "command": null
+      },
+      {
+        "n": 9,
+        "title": "Answer the three questions",
+        "detail": "Answer, pointing at the report, before reading on. **Faulting line?** `overflow.c:11` — the `buf[i] = 'A'` store, the moment `i` reached 16. **Allocation site?** `overflow.c:6` — the `malloc(16)`. **Region size?** `16-byte region [0x6020000000b0, 0x6020000000c0)`, and the bad write is `0 bytes after` it — the very first byte past the end. Those three answers are the whole skill of reading an ASan report; every report you'll ever see has the same three organs.",
+        "command": null
+      },
+      {
+        "n": 10,
+        "title": "Rebuild at -O1 and watch the bug vanish",
+        "detail": "Rebuild at `-O1` instead of `-O0` and run again. On the author's machine: the program prints `wrote 20 bytes into a 16-byte block` and exits 0 — no report. The optimizer deleted the dead stores, bug included. Hence the two-tier rule: `-O0` is the default for sanitizer builds, for maximum visibility — but you verify at `-O2` as well, because the optimizer changes what the sanitizers can observe, and the I.8 capstone scores its cleanliness there. I.8 owns the explanation.",
+        "command": null
+      },
+      {
+        "n": 11,
+        "title": "Write the crasher",
+        "detail": "Part 3 — a segfault, into the debugger. Write this program:\n\n```c\n#include <stdio.h>\n\nstatic void scribble(char *dst, int n)\n{\n    for (int i = 0; i < n; i++)\n        dst[i] = 'x';\n}\n\nstatic void middle(int n)\n{\n    char *target = NULL;\n    int guard = 7;\n\n    printf(\"about to write %d bytes\\n\", n);\n    scribble(target, n);\n    printf(\"guard is still %d\\n\", guard);\n}\n\nint main(void)\n{\n    middle(4);\n    printf(\"survived\\n\");\n    return 0;\n}\n```",
+        "command": null
+      },
+      {
+        "n": 12,
+        "title": "Build with debug info and run it plainly",
+        "detail": "Expect `Segmentation fault: 11`. Note what you did *not* see: `about to write 4 bytes`. When stdout is a pipe it is block-buffered, and the buffer died with the process (interactive terminals line-buffer, so you may see it there). Lesson worth the price of admission: **prints are not a reliable crash oracle — the debugger is.**",
+        "command": "cc -std=c11 -Wall -Wextra -g -O0 crash.c -o crash\n./crash"
+      },
+      {
+        "n": 13,
+        "title": "Walk the crash in the debugger",
+        "detail": "Into the debugger — gdb on Linux (`gdb ./crash`), lldb on this Mac (`lldb ./crash`); the concepts are identical. Then `run`: the process stops at the faulting store with the whole call stack frozen. Ask for the backtrace (`bt` in both):\n\n```text\n#0  scribble (dst=0x0, n=4) at crash.c:6\n#1  0x0000000100000f2c in middle (n=4) at crash.c:15\n#2  0x0000000100000f58 in main () at crash.c:21\n```\n\nFrame #0 is where the fault happened: `scribble`, line 6, and look at the argument — `dst=0x0`, a null pointer, arrived from the caller. `info locals` (lldb: `frame variable`) shows `i = 0`: it died on the first store. Now climb — `frame 1` (lldb: `frame select 1`), then inspect the dead frame's locals:\n\n```text\n(gdb) frame 1\n#1  0x0000000100000f2c in middle (n=4) at crash.c:15\n15          scribble(target, n);\n(gdb) info locals\ntarget = 0x0\nguard = 7\n```\n\nThere is the whole story: `middle` initialized `target = NULL`, never pointed it at storage, and passed it down. `guard = 7` sits right next to it, unharmed — the fault wasn't corruption, it was a pointer that was never born. The line the debugger shows (15) is where frame #1 will resume if frame #0 ever returns; that is what \"the call stack is frozen\" means concretely.",
+        "command": "lldb ./crash"
+      },
+      {
+        "n": 14,
+        "title": "Fix the bug and confirm",
+        "detail": "`quit` the debugger. Fix the bug (`target` needs real storage — a local array or a `malloc`), rebuild, and confirm the program now prints all three lines (`about to write 4 bytes`, `guard is still 7`, `survived`) and exits 0.",
+        "command": null
+      }
+    ],
+    "closingPrompt": "State the rule: a memory bug has three coordinates — the faulting line, the allocation site, and the region's bounds — and the instrumentation toolchain reports all three; your job is to read them, not to guess."
+  },
+  "buildTask": {
+    "title": "libcore.a — package Book I as a real library with a real build and a real test suite",
+    "brief": "**← L3 GATE.** This artifact does not pass, you do not advance to Book II. Package the work of Book I so far as a static library archiving two modules you already own, plus a data-driven test harness: `core.h` (the public header — the only header a user of the library includes), `buf.c` (the I.4 growable buffer), `readline.c` (the I.5 bounded reader), `harness.c`, and a `Makefile` that builds the library, the harness, and runs the tests.\n\n**The interface, fixed.** `core.h` declares, and only declares: `struct buf { int *data; size_t len; size_t cap; };` with `void buf_init(struct buf *b);`, `int buf_push(struct buf *b, int value);` (doubling growth; -1 on allocation failure), `int buf_get(const struct buf *b, size_t i, int *out);`, `void buf_free(struct buf *b);` — and `size_t read_line(char *dst, size_t cap);` under the scored I.5 contract, carried over unchanged (snprintf-style: writes at most `cap - 1` payload bytes and always NUL-terminates when `cap > 0`, never touching `dst[cap - 1]` or beyond under any input; returns the payload length of the FULL line, newline excluded, so a return value `>= cap` signals truncation distinctly; immediate EOF returns 0 with `feof(stdin)` set). Behavioural requirements are inherited, not relaxed: `buf_push` grows geometrically (doubling), `realloc` failure leaves the old buffer intact and returns -1, the I.4 ownership contract stands (caller calls `buf_free`; a successful `buf_push` may invalidate saved pointers into `data` — say so in the header comment), and `buf_get` keeps its status-return / out-parameter shape.\n\n**The harness.** Tests are registered in a function-pointer dispatch table — `struct test_case { const char *name; int (*run)(void); }`, returning 0 on pass — and run with a pass/fail summary: the driver walks the table, prints each test's name with `PASS`/`FAIL`, prints an `N/M passed` summary, and exits zero only if every test passed. Register at minimum: a growth test (push many, verify `len`, verify values readable back through `buf_get`), a bounds test (`buf_get` out of range fails cleanly), and a truncation test for `read_line` with input far longer than `cap` (pipe it in; the harness reads `stdin`) — the test must *branch* on the truncation signal: `>= cap` means truncated, with `cap - 1` payload bytes stored.\n\n**The Makefile.** Required targets: default — builds `libcore.a` (`ar rcs libcore.a buf.o readline.o`) and the harness (`cc ... harness.c -L. -lcore -o harness`); `test` — builds everything, runs the harness (feed its stdin a long line); `san` — a clean build with `-fsanitize=address,undefined` added, then the full test run, at `-O0` by default and again at `-O2` (the level the I.8 capstone scores); make it build clean itself — flags are not files, and `make` does not track them; `clean`.",
+    "gate": true,
+    "rubric": [
+      {
+        "id": "clean-build-separation",
+        "criterion": "`make` from a clean tree builds the library, the harness, and runs the tests; header/implementation separation is correct (guards, no definitions in the header, internal helpers `static`) — fresh `make clean && make && make test` succeeds, `core.h` holds declarations and the struct definition only behind a guard, `nm libcore.a` shows no helper symbols that shouldn't be visible",
+        "weight": 1
+      },
+      {
+        "id": "harness-fails-loudly",
+        "criterion": "The harness fails loudly — a broken test produces a nonzero exit and a named failure — demonstrated by deliberately breaking one test (e.g. expect the wrong `len`), showing the `FAIL` line naming the test and the nonzero exit (`make: *** [test] Error 1`); restore before submitting and keep the transcript",
+        "weight": 1
+      },
+      {
+        "id": "sanitizer-clean",
+        "criterion": "The full suite passes clean under ASan and UBSan, with zero valgrind errors and zero leaked bytes — `make san` runs green with zero sanitizer reports; on Linux, `valgrind --leak-check=full ./harness` shows `ERROR SUMMARY: 0 errors` and `definitely lost: 0 bytes`; on macOS the sanitizer run is the operative check (valgrind unavailable, ASan leak detection declined — state this in your README rather than faking it)",
+        "weight": 1
+      },
+      {
+        "id": "data-driven-dispatch",
+        "criterion": "The dispatch table is genuinely data-driven: adding a test is one table entry plus its function, no driver changes — if you touched the driver loop, it doesn't count",
+        "weight": 1
+      }
+    ],
+    "stretch": [
+      "Add your I.3 `my_strlen` to the library as a third module — pointer arithmetic only, table-registered tests — so `libcore.a` spans three modules of the book.",
+      "Make the growth test assert the *observable* doubling geometry: track `cap` across pushes and verify it only ever takes the values 4, 8, 16, 32, …, so the geometric-growth requirement is tested, not just believed."
+    ]
+  }
+}

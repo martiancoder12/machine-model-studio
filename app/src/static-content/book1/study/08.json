@@ -1,0 +1,70 @@
+{
+  "moduleId": "08",
+  "lab": {
+    "summary": "One program with three planted defects — a deletable overflow guard, an uninitialized read, an off-by-one — run three ways: plain at -O0 and -O2, then under UBSan, then under ASan. Watch the same source diverge and learn what each tool can and cannot see.",
+    "steps": [
+      {
+        "n": 1,
+        "title": "Compile at both levels and read the diagnostics",
+        "detail": "Write `lab_ub.c` — the lab program with three planted defects: `bump` (a signed-overflow guard `if (x + 1 < x)` the optimizer is entitled to delete), `parity` (an uninitialized read — `r` is only set when `v > 0`), and `load_and_sum` (an off-by-one `for (i = 0; i <= n; i++)` that walks one past the end of an 8-slot array). `main` calls all three on an 8-element array and prints to stderr so output survives a mid-program abort.\n\nBoth builds emit one warning — the compiler *can* see defect 2:\n\n```text\nlab_ub.c:18:9: warning: variable 'r' is used uninitialized whenever 'if' condition is false [-Wsometimes-uninitialized]\n```\n\nNote what the compiler does *not* warn about: the other two defects compile silent. One out of three is the best a warning flag will ever do for you.",
+        "command": "cc -std=c11 -Wall -Wextra -O0 lab_ub.c -o lab_O0\ncc -std=c11 -Wall -Wextra -O2 lab_ub.c -o lab_O2"
+      },
+      {
+        "n": 2,
+        "title": "Run both builds and record the divergence",
+        "detail": "Fill in the divergence table before reading further. Observed on the author's machine:\n\n| line | `-O0` | `-O2` |\n|---|---|---|\n| `bump(INT_MAX)` | `-1` — guard fired | `-2147483648` — guard deleted, wrap visible |\n| `parity(-3)` | stack garbage (changes every run) | `1` — the optimizer picked a value |\n| `sum` | never printed — the process aborts | `360`, printed, exit 0 |\n\nThree surprises worth naming. First, the `-O0` garbage is not even stable — an uninitialized read hands you whatever the stack happened to hold, and that changes run to run. Second, the `-O0` build *aborts* before printing `sum`: Apple clang enables the stack protector by default, and its canary check at the end of `load_and_sum` caught the off-by-one write on the way out — rebuild with `-fno-stack-protector` and the same source runs to completion at `-O0`, printing `sum = 0`, a wrong answer produced silently. Third, the `-O2` build prints the \"right\" sum of 360 and exits 0 — the off-by-one still executes, but the layout it corrupts happens to be harmless *on this machine, at these flags*. Right output from wrong code is the most dangerous result in this whole lab.",
+        "command": "./lab_O0\n./lab_O2"
+      },
+      {
+        "n": 3,
+        "title": "Run under UBSan",
+        "detail": "UBSan names defect 1 (line 9: `signed integer overflow: 2147483647 + 1 cannot be represented in type 'int'` — the overflow itself, whether or not the guard survives) and defect 3 (line 30: `index 8 out of bounds for type 'int[8]'`), each with file, line, and a precise description. It recovers and continues after each report — add `-fno-sanitize-recover=all` to stop at the first — and the trailing `Abort trap: 6` is the stack protector again, firing at the function return UBSan let it reach. Note what UBSan did *not* flag: `parity(-3)`. Reading an uninitialized automatic variable is outside UBSan's checks on this build — that is MSan's job, and MSan is unavailable on this machine. Know your tools' blind spots; the compiler warning in step 1 was the only alarm this defect tripped.",
+        "command": "cc -std=c11 -Wall -Wextra -O1 -g -fsanitize=undefined lab_ub.c -o lab_ubsan\n./lab_ubsan"
+      },
+      {
+        "n": 4,
+        "title": "Run under ASan",
+        "detail": "Built at `-O0` deliberately: at `-O1` and above the compiler promotes the tiny `tmp` array into registers, the out-of-bounds access never touches memory, and ASan has nothing to see — the same build runs \"clean\" with `sum = 360`. Optimization level changes what the sanitizers can observe, not just what the optimizer does. When a sanitizer build reports nothing, the finding is \"no memory error *as compiled*,\" not \"no defect.\"\n\nRead the ASan report top to bottom, the way you will read hundreds of them by the end of Book III: **what** happened (`stack-buffer-overflow`, a `READ of size 4`), **where** in the program (the stack frames — shown unsymbolized because `ASAN_OPTIONS=symbolize=0` was set; on this machine the default symbolizer can stall, and the report's object annotation still names the variable and line), and **which object** was overflowed — the report tells you directly: `data`, the 8-element array at line 38, occupies bytes [32, 64) of its frame, and the access at offset 64 is the first byte past it. That is `src[i]` with `i == 8`: the off-by-one's *read* side, caught before the write side even executes. ASan found the same defect UBSan did, from the memory side rather than the language side. Two independent tools, one root cause.",
+        "command": "cc -std=c11 -Wall -Wextra -O0 -g -fsanitize=address lab_ub.c -o lab_asan\nASAN_OPTIONS=symbolize=0 ./lab_asan"
+      },
+      {
+        "n": 5,
+        "title": "Write one line per defect",
+        "detail": "Three columns: what the code assumed, what the standard says, what the optimizer (or machine) did with the difference. Model answers:\n\n1. **`bump`** — assumed signed overflow wraps and can be detected after the fact; the standard says signed overflow is undefined (C11 §6.5 ¶5: if the result is not representable, the behaviour is undefined); at `-O2` the optimizer assumed it away and deleted the guard, while the `-O0` build performed the wrapping addition and fired it.\n2. **`parity`** — assumed `r` holds a meaningful value on every path; the standard says an uninitialized automatic object has indeterminate value and reading it is undefined; the compiler warned, `-O0` returned rotating stack garbage, `-O2` committed to `1`.\n3. **`load_and_sum`** — assumed indices `0..n` fit in an 8-element array with `n == 8`; the standard says indexing one past the last element is outside the object and undefined; at `-O0` the stack protector aborted the process, at `-O2` the same smash produced a plausible-looking 360 in silence, and ASan named the variable and the line.",
+        "command": null
+      }
+    ],
+    "closingPrompt": "State the rule, one sentence: undefined behaviour is not \"the machine might do anything\" — it is \"the compiler may assume this never happens,\" and every divergence between your `-O0` and `-O2` runs marks a place where you relied on behaviour the standard never promised."
+  },
+  "buildTask": {
+    "title": "CAPSTONE — the I.8 parser (minicfg)",
+    "brief": "Everything in this book converges here. You are given a small, real C program you did not write — `minicfg.c`, in full in the chapter: a line-oriented config/record parser with a lexer and a recursive-descent core, a few hundred lines. It compiles warning-free under `cc -std=c11 -Wall -Wextra`, runs correctly on well-formed input (the chapter's `example.cfg` with two sensor records), and contains **exactly one planted defect** of a class you have met in this book. The defect is not marked. Find it the way you would in any audit: read, then instrument. This is the L3 gate statement made literal: *given a C file you have never seen, produce an accurate map of it and catch its undefined behaviour, by eye and by tool.*\n\n**What you deliver.** (1) **A written code map**, produced with the four-move method: the entry points (execution and data), the token/AST data structures and what each represents, one transaction traced end to end (follow one record from file bytes to printed output, naming every function on the path), and an ownership note at every allocation boundary — `read_file`'s heap buffer, the token array, the config storage, every `strcpy`/`snprintf` destination. (2) **An instrumented build**: the parser compiled with `-fsanitize=address,undefined`, plus whatever probes your reading motivated, with the probe sites listed in your write-up. (3) **The planted defect, found, with reproducible evidence**: the sanitizer report (or probe output) that located it, the exact input that triggers it, the commands that reproduce the report from a clean tree, and your one-line statement of what the code assumed versus what the standard says — the lab's discipline, applied to code you didn't write. (4) **One grammar extension, with tests**: a new production added to the grammar — a new statement form or value form — implemented in the lexer *and* the recursive-descent core. Candidates: top-level `key = value` defaults outside any record; a `list = a, b, c` value form; an optional `record name : parent { … }` inheritance clause. Pick one. Your tests must include a well-formed input exercising the new production, a malformed input rejected with a located diagnostic, and the original `example.cfg` passing unchanged.\n\n**Constraints.** Fix the defect minimally and say in one sentence why your fix is correct; do not redesign the parser around it. Keep the codebase warning-free — a new warning is a regression. Hold on to the finished artifact: Book III.4 points a fuzzer at the I.8 parser — what you found by eye and sanitizer here, you will find by coverage-guided brute force there.",
+    "gate": false,
+    "rubric": [
+      {
+        "id": "code-map",
+        "criterion": "The code map is accurate — entry points, the token/AST structures, one transaction traced end to end, and an ownership note at every allocation boundary; spot-checked against the source, no guess survives a re-read",
+        "weight": 1
+      },
+      {
+        "id": "defect-found",
+        "criterion": "The planted defect is found with sanitizer evidence — your write-up's commands reproduce the report from a clean tree; the trigger input and the faulting line are named",
+        "weight": 1
+      },
+      {
+        "id": "extension-lands",
+        "criterion": "The extension lands without breaking existing behaviour — the new production works and is tested; the original grammar and `example.cfg` behave identically to the baseline",
+        "weight": 1
+      },
+      {
+        "id": "artifact-clean",
+        "criterion": "The whole artifact is clean — original plus extension compiles warning-free under `cc -std=c11 -Wall -Wextra` and runs clean under ASan/UBSan at `-O2`; fixing the defect you found is part of the artifact",
+        "weight": 1
+      }
+    ],
+    "stretch": [
+      "Restructure the fixed, extended parser into the I.7 shape — `minicfg.h`, `minicfg.c`, a driver, a Makefile — so it could sit in `libcore.a` beside the growable buffer and `read_line`; notice which functions stop being `static` and why.",
+      "Become your own adversary: write a small script that generates random config files — long names, deep field counts, unterminated strings, stray characters — and run the sanitizer build against a few hundred of them. If you find a *second* defect the planting didn't intend, document it; that is what the job actually looks like."
+    ]
+  }
+}

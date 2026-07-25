@@ -1,0 +1,99 @@
+{
+  "moduleId": "04",
+  "lab": {
+    "summary": "Three small programs, three deliberate sins — the leak, the double-free, the realloc move. Commit each one, watch the consequence with your own eyes, then fix it and state the fix as a one-sentence ownership rule. Compile everything with `cc -std=c11 -Wall -Wextra`.",
+    "steps": [
+      {
+        "n": 1,
+        "title": "Sin 1 — commit the leak",
+        "detail": "Write the leak program: a loop of 5 rounds × 10 allocations, each `malloc(10 << 20)` (10 MiB) deliberately never freed, with `memset(p, 1, 10 << 20)` touching every page so the memory is real — without touching the pages the OS hands out virtual address space lazily and the climb is nearly invisible (the first version of this demo without `memset` showed ~2 MB per round; a leak you can't observe is still a leak). A `peak_rss_kb()` helper using `getrusage(RUSAGE_SELF, …)` reports the process's peak resident memory after each round. Compile and run.",
+        "command": null
+      },
+      {
+        "n": 2,
+        "title": "Sin 1 — observe the RSS climb",
+        "detail": "Observed output on the author's machine:\n\n```text\nstart: peak RSS 1344 KB\nafter 100 MiB: peak RSS 103936 KB\nafter 200 MiB: peak RSS 206496 KB\nafter 300 MiB: peak RSS 309056 KB\nafter 400 MiB: peak RSS 411616 KB\nafter 500 MiB: peak RSS 514176 KB\n```\n\nMemory climbs almost exactly 100 MB per round — every leaked byte accounted for. Note the exit: the program ends and the OS reclaims all 500 MB instantly. A leak only matters *during* the process's lifetime — which is why a leak in a short-lived demo is invisible and a leak in a long-running daemon or a 20-year PLC is a reliability bug.",
+        "command": null
+      },
+      {
+        "n": 3,
+        "title": "Sin 1 — fix it and state the rule",
+        "detail": "**Fix:** free each block before losing the pointer (move `free(p)` inside the loop, after `memset`). Rebuild, rerun, watch RSS stay flat.\n\n**State the rule:** *every allocation is freed exactly once on every path, before its last handle is lost.*",
+        "command": null
+      },
+      {
+        "n": 4,
+        "title": "Sin 2 — commit the double-free",
+        "detail": "Write the double-free program:\n\n```c\n#include <stdio.h>\n#include <stdlib.h>\n\nint main(void)\n{\n    char *p = malloc(64);\n    if (p == NULL) return 1;\n    printf(\"allocated %p\\n\", (void *)p);\n    fflush(stdout);          /* make sure this prints before we die */\n    free(p);\n    printf(\"freed once — fine\\n\");\n    fflush(stdout);\n    free(p);   /* deliberate sin: the same pointer, freed twice */\n    printf(\"you will not see this line\\n\");\n    return 0;\n}\n```\n\nThe `fflush` calls exist because a process killed abruptly never flushes buffered stdio — without them you would not even see the first two lines. A dying program's last output is a debugging tool; remember that.",
+        "command": "cc -std=c11 -Wall -Wextra lab_doublefree.c -o lab_doublefree && ./lab_doublefree"
+      },
+      {
+        "n": 5,
+        "title": "Sin 2 — observe the allocator's kill",
+        "detail": "Observed behaviour on the author's machine:\n\n```text\nallocated 0x103651990\nfreed once — fine\nTrace/BPT trap: 5            ← the process is killed; exit status 133\n```\n\nThe allocator detected the second `free` of a live-once block and killed the process on the spot — the third `printf` never ran. Honesty about your machine: on this macOS (Apple clang, arm64) the abort arrives as `SIGTRAP` with no diagnostic printed to stderr (the detailed message goes to the system log); on glibc/Linux the same sin typically prints `double free or corruption (!prev)` and dies with `SIGABRT`. Different allocators, different last words, same cause of death.",
+        "command": null
+      },
+      {
+        "n": 6,
+        "title": "Sin 2 — fix it and state the rule",
+        "detail": "**Fix:** delete the second `free`. Then adopt the defensive habit: after freeing, set the pointer to `NULL` — `free(NULL)` is a guaranteed no-op, so a repeated free becomes harmless instead of fatal.\n\n**State the rule:** *a block's owner frees it exactly once, and afterwards every pointer to it is dead (set yours to NULL).*",
+        "command": null
+      },
+      {
+        "n": 7,
+        "title": "Sin 3 — commit the realloc move",
+        "detail": "Write the realloc program: `malloc` 8 bytes, `strcpy` `\"abc\"` in, then grow in doublings for 24 iterations with the two-step pattern (`char *t = realloc(p, newcap); if (t == NULL) { free(p); return 1; } p = t;`), printing `cap`, the address, and the contents after each doubling. Compile and run. **Watch the address column.**",
+        "command": null
+      },
+      {
+        "n": 8,
+        "title": "Sin 3 — observe the moves",
+        "detail": "Observed output (the jumps that matter):\n\n```text\ncap   8: 0x1040599d0  \"abc\"\ncap  16: 0x1040599d0  \"abc\"  <- contents preserved across growth\ncap  32: 0x1040599e0  \"abc\"\ncap  64: 0x104059a00  \"abc\"\n...\ncap 16384: 0xb17004000  \"abc\"\n...\ncap 4194304: 0x650000000  \"abc\"\n```\n\nThe block moved almost every doubling — sometimes a few bytes up the heap, twice to entirely different regions — and the contents survived every move; `realloc` copied them, that is its job. Now the pointed question: if another pointer — a `char *cursor` walking the string, or a struct field holding `p` — had been stashed anywhere before the move, it would still hold the *old* address, which now belongs to the allocator or to someone else's allocation. This is how the cold open's use-after-free arises in real code: not from a stray `free`, but from a growth operation that invalidated pointers nobody remembered.",
+        "command": null
+      },
+      {
+        "n": 9,
+        "title": "Sin 3 — fix it and state the rule",
+        "detail": "**Fix:** the two-step pattern you see in the listing (never `p = realloc(p, n)`), plus the discipline: after a successful `realloc`, *recompute* every derived pointer from the new base; never cache pointers into a growable buffer across a push.\n\n**State the rule:** *only `realloc`'s return value names the block after a resize — every pointer into the old location is dead the moment the call succeeds.*",
+        "command": null
+      }
+    ],
+    "closingPrompt": "State the three ownership rules from memory: every allocation is freed exactly once on every path, before its last handle is lost · a block's owner frees it exactly once, and afterwards every pointer to it is dead (set yours to `NULL`) · only `realloc`'s return value names the block after a resize — every pointer into the old location is dead the moment the call succeeds. Plus the standing rule: check every allocation for `NULL`."
+  },
+  "buildTask": {
+    "title": "The I.4 growable buffer — the Vec ancestor",
+    "brief": "Build the data structure that every dynamic array in every language descends from: a contiguous block of elements that grows geometrically as you push into it. Three files: `buf.h` (interface and ownership contract), `buf.c` (implementation), `main.c` (demo). The interface is fixed:\n\n```c\nstruct buf {\n    int *data;    /* heap block of cap ints, or NULL when empty */\n    size_t len;   /* elements currently stored */\n    size_t cap;   /* elements the block can hold */\n};\n\nvoid buf_init(struct buf *b);\nint  buf_push(struct buf *b, int x);   /* 0 on success, -1 if allocation failed */\nint  buf_get(const struct buf *b, size_t i, int *out);   /* 0 on success, -1 if i out of range */\nvoid buf_free(struct buf *b);\n```\n\n**Behavioural requirements.** (1) `buf_init` puts the buffer in a valid empty state: `data == NULL`, `len == cap == 0`, no allocation yet. (2) `buf_push` appends `x`; when `len == cap` it grows first — from 0 to some positive initial capacity, thereafter **doubling** (`cap *= 2`) — using the two-step `realloc` pattern. (3) The `realloc` failure path is real: if growth allocation fails, `buf_push` returns -1 and the buffer is left exactly as it was — old data intact, `len`/`cap` unchanged, still fully usable (a subsequent `buf_get` must work, and `buf_free` must still be called). (4) `buf_get` writes the element at index `i` through `out` and returns 0; `i >= len` is a *reported* contract violation, not a silent one: return -1 and leave `*out` untouched. Your demo must make both paths visible — successful reads by index, and one deliberate out-of-range call whose -1 you print and handle. (5) `buf_free` releases the block and returns the buffer to the initialized empty state; calling `buf_free` twice in a row must be safe, and after `buf_free`, `buf_init` is *not* required before reuse. (6) `main` pushes at least 40 values so several doublings occur, prints `len` and `cap` after each push so geometric growth is observable in the output, retrieves and prints a few elements by index, then frees.\n\n**The ownership contract (scored — write it in `buf.h`'s header comments), at minimum:** who calls `buf_free` (the owner of the `struct buf`), and that the struct owns its `data` block · that `buf_push` may move the block, so **any pointer a caller saved into `data` is invalid after any push** · that `buf_push` returning -1 transfers nothing and invalidates nothing.\n\n**Constraints.** C11, compiles warning-free under `cc -std=c11 -Wall -Wextra`. No VLAs, no fixed \"maximum size\" constant that caps growth. Every allocation freed exactly once, on every path including the failure path. Leak accounting is ad-hoc for now (I.7 formalizes it): add a counter or print statements that convince a reader your demo's allocations and frees balance — and say so in one line of output.\n\nHold on to the finished artifact: in I.7 you package it into `libcore.a`; in Book II.2 you rebuild it under a compiler that enforces everything you just promised in comments.",
+    "gate": false,
+    "rubric": [
+      {
+        "id": "geometric-growth",
+        "criterion": "Geometric growth — `cap` doubles; output shows 0 → initial → ×2 → ×4 … and `len` catching up (zero marks: growth is one-per-push or invisible in output)",
+        "weight": 1
+      },
+      {
+        "id": "free-discipline",
+        "criterion": "Free discipline — every allocation freed exactly once, failure path included; double-`buf_free` safe (zero marks: leak, double-free, or crash on any path)",
+        "weight": 1
+      },
+      {
+        "id": "ownership-contract",
+        "criterion": "Ownership contract — all three clauses present and *accurate* in `buf.h` comments (zero marks: contract missing, or describes code you didn't write)",
+        "weight": 1
+      },
+      {
+        "id": "realloc-failure-path",
+        "criterion": "`realloc` failure path — `buf_push` returns -1, old buffer intact and usable, two-step pattern used (zero marks: `p = realloc(p, …)` anywhere, or failure corrupts the buffer)",
+        "weight": 1
+      },
+      {
+        "id": "bounds-checked-get",
+        "criterion": "Bounds-checked `buf_get` — out-of-range call returns -1, `*out` untouched, and the demo shows the failure handled (zero marks: reads past `len` return silent garbage, or the check is absent)",
+        "weight": 1
+      }
+    ],
+    "stretch": [
+      "Failure injection: add a compile-time test hook (e.g. `-DFAIL_REALLOC_AT=3`) that makes the *n*-th `realloc` in your demo return `NULL`, and prove in the output that the buffer survives — push fails, old elements still readable, `buf_free` still clean.",
+      "Generalize the element type: replace `int` with a `typedef int buf_elem;` in one place, then flip it to `double` and confirm nothing else in the implementation had to change. (The fully generic `void *` version needs material from I.6 — note it, don't build it.)"
+    ]
+  }
+}

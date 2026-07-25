@@ -1,0 +1,53 @@
+{
+  "moduleId": "06",
+  "lab": {
+    "summary": "Three exercises, one theme: the layout is measurable, and the wire is not your struct. Map a struct with offsetof, shrink it by reordering, then parse a real wire frame byte by byte.",
+    "steps": [
+      {
+        "n": 1,
+        "title": "Map the cold-open struct",
+        "detail": "Re-run `coldopen.c` from the cold open if you haven't (the `struct Reading { char sensor_id; int value; char status; }` layout survey using `sizeof` and `offsetof`). Then extend it: print `sizeof` and `offsetof` for a struct of *your own* design with at least four members of mixed types (include a pointer and a `double`). **Before running, write your predicted offsets on paper.** Run, compare, and for every prediction you missed, say which of the three layout rules fired (every type has an alignment; each member is placed at the next offset satisfying its alignment; the struct's size rounds up to a multiple of its strictest member's alignment).",
+        "command": null
+      },
+      {
+        "n": 2,
+        "title": "Shrink it",
+        "detail": "Reorder your Step 1 struct's members by descending alignment and re-measure. `reorder.c` from the exposition is the model (`struct ReadingTight`: same three fields, 12 bytes → 8). Your output should show the old size, the new size, and the new offsets. If the shrink is zero, your struct was already tight — say why in one sentence (which rule left no room?).",
+        "command": null
+      },
+      {
+        "n": 3,
+        "title": "Parse a real frame, byte by byte",
+        "detail": "Here is one captured frame: a minimal Modbus-TCP-like header, seven bytes — transaction ID (2 bytes, big-endian), protocol ID (2, big-endian), length (2, big-endian), function code (1). Write this parser:\n\n```c\n#include <stdio.h>\n#include <stdint.h>\n\n/* One captured frame: a 7-byte Modbus-TCP-like header.\n *   [0..1] transaction ID, big-endian\n *   [2..3] protocol ID,    big-endian\n *   [4..5] length,         big-endian\n *   [6]    function code\n */\nstatic const uint8_t frame[7] = {\n    0x12, 0x34,   /* transaction ID */\n    0x00, 0x00,   /* protocol ID    */\n    0x00, 0x06,   /* length         */\n    0x03          /* function code  */\n};\n\nstatic uint16_t be16(const uint8_t *p)\n{\n    return (uint16_t)((p[0] << 8) | p[1]);\n}\n\nint main(void)\n{\n    uint16_t tid = be16(&frame[0]);\n    uint16_t pid = be16(&frame[2]);\n    uint16_t len = be16(&frame[4]);\n    uint8_t  fc  = frame[6];\n\n    printf(\"transaction ID : 0x%04x\\n\", tid);\n    printf(\"protocol ID    : %u\\n\", pid);\n    printf(\"length         : %u\\n\", len);\n    printf(\"function code  : %u\", fc);\n    if (fc == 3)\n        printf(\" (read holding registers)\");\n    putchar('\\n');\n    return 0;\n}\n```\n\nExpected output:\n\n```text\ntransaction ID : 0x1234\nprotocol ID    : 0\nlength         : 6\nfunction code  : 3 (read holding registers)\n```\n\nRead the `be16` helper until it is boring: take the high byte, shift it left 8, OR in the low byte. That two-line function is the entire decode for every 16-bit field in the frame, and it is *explicit* — the endianness conversion is written in the code, not assumed from the machine. Then change the frame bytes and re-decode: try `0x00, 0x01` for the transaction ID, then a function code of `0x10` (16) and add the name for it (write multiple registers) to the printout.",
+        "command": "cc -std=c11 -Wall -Wextra mbap.c -o mbap\n./mbap"
+      }
+    ],
+    "closingPrompt": "State the one-line rule: parse wire bytes explicitly, field by field, in the protocol's byte order — never cast a byte buffer to a struct, because the compiler's offsets, padding, and endianness are not the protocol's."
+  },
+  "buildTask": {
+    "title": "val — the tagged-union value type",
+    "brief": "Build a small dynamic value: a struct carrying a tag and a union of three payloads, with guarded access, deep copy, and clean destruction — the pattern underneath every interpreter's value type, every JSON parser's node, every config system's settings table. This interface is fixed by name; Book II will hold you to it. Single file `val.c` (multi-file discipline arrives in I.7):\n\n```c\nenum ValTag { VAL_INT, VAL_DOUBLE, VAL_STRING };\n\nstruct Val {\n    enum ValTag tag;\n    union {\n        int    i;\n        double d;\n        char  *s;\n    } as;\n};\n```\n\n**Required operations.** `void val_print(const struct Val *v);` — prints the value according to its tag. `struct Val val_copy(const struct Val *v);` — deep copy: a `VAL_STRING` copy gets its *own* heap allocation, so original and copy share no pointers. `void val_destroy(struct Val *v);` — releases everything the value owns; safe on any tag. Tag-guarded accessors — one per payload, on the shape of `int val_as_int(const struct Val *v);` — each beginning with `assert(v->tag == VAL_INT);` (or its tag). The assertion is part of the deliverable, not a nicety. You may add small constructors (`val_int`, `val_double`, `val_string(const char *)`) if they keep the demo readable; `strdup` is POSIX, not C11, so duplicate strings with `malloc` + a bounded copy you control.\n\n**The demo.** `main` builds a mixed sequence — an array of `struct Val` holding at least one of each tag — copies the whole sequence, prints both original and copy, then destroys both. Before exiting it prints `sizeof(struct Val)`.\n\n**The layout paragraph.** In a comment block above `main`, write one paragraph explaining the type's layout accurately: the tag, the padding, the union, and the total. On the author's machine (arm64, clang) the numbers to beat are: tag at offset 0 occupying 4 bytes, 4 bytes of padding, the union at offset 8 occupying 8 bytes (its largest member is the `char *`), total size 16. Verify with `offsetof` on your machine and report what you actually measure.\n\n**Constraints.** Every union access — in `val_print`, `val_copy`, the accessors, everywhere — is guarded by the tag. No exceptions. String payloads are heap-owned, freed exactly once, per the ownership discipline you built in I.4: every `malloc` has exactly one `free`, on every path through the demo. Compiles warning-free under `cc -std=c11 -Wall -Wextra`.",
+    "gate": false,
+    "rubric": [
+      {
+        "id": "tag-guarded-access",
+        "criterion": "Tag-guarded access — a deliberate wrong-tag access (call `val_as_int` on a `VAL_STRING` in a scratch main) is caught by the assertion in the accessor — demonstrated, not asserted in prose; no unguarded union read exists anywhere",
+        "weight": 1
+      },
+      {
+        "id": "ownership",
+        "criterion": "Ownership (I.4 rules) — `val_copy` produces an independent deep copy; mutating the copy's string cannot touch the original; `val_destroy` frees every heap byte exactly once — the demo's alloc/free count balances, and there is no shared pointer between original and copy that could double-free",
+        "weight": 1
+      },
+      {
+        "id": "layout-understanding",
+        "criterion": "Layout understanding — the demo prints `sizeof(struct Val)`, and the comment paragraph explains tag, padding, and union accurately against `offsetof` output on your machine",
+        "weight": 1
+      }
+    ],
+    "stretch": [
+      "Add `int val_eq(const struct Val *a, const struct Val *b);` — deep equality: tags equal, and for strings, contents equal (not pointers).",
+      "Add `size_t val_serialize(const struct Val *v, uint8_t *out, size_t cap);` that writes a value to bytes using the lab's discipline — tag byte, then the payload in an explicit byte order — and a matching deserializer. Round-trip your demo sequence through it: you have just designed a (tiny) wire format, byte by byte."
+    ]
+  }
+}

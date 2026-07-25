@@ -5,7 +5,7 @@ import { BookReader } from '@/components/BookReader';
 import { DashboardDialog } from '@/components/DashboardDialog';
 import { ModuleSidebar } from '@/components/ModuleSidebar';
 import { StudyPanel } from '@/components/StudyPanel';
-import { api, isMockMode } from '@/lib/api';
+import { api, isMockMode, isStaticMode } from '@/lib/api';
 import {
   cycleStatus,
   getStatus,
@@ -169,7 +169,15 @@ export default function App() {
         onJumpToModule={handleSelectModule}
       />
 
-      {mockMode && (
+      {isStaticMode() && (
+        <div className="pointer-events-none fixed bottom-3 left-3 z-50">
+          <Badge variant="outline" className="pointer-events-auto border-sky-700/40 bg-sky-100 text-sky-900">
+            static deployment — real book content · compilation simulated
+          </Badge>
+        </div>
+      )}
+
+      {!isStaticMode() && mockMode && (
         <div className="pointer-events-none fixed bottom-3 left-3 z-50">
           <Badge variant="outline" className="pointer-events-auto border-amber-700/40 bg-amber-100 text-amber-900">
             mock API — backend offline (?mock=1)

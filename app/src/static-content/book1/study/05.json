@@ -1,0 +1,70 @@
+{
+  "moduleId": "05",
+  "lab": {
+    "summary": "Map the I.5 stack smear byte by byte, then close it: rebuild the overflow with the machine's safeties off, measure which input bytes land in `neighbour`, locate the stack canary, and fix the copy. Work in a fresh directory with the cold-open `overflow.c` source.",
+    "steps": [
+      {
+        "n": 1,
+        "title": "Build the raw version",
+        "detail": "You need the machine to show you the smear, so turn off this machine's two safeties — and say out loud what each flag disables as you type it. `-D_FORTIFY_SOURCE=0` stops the SDK from swapping `strcpy` for the checked `__strcpy_chk`. `-fno-stack-protector` stops the compiler from planting the stack canary. You are deliberately rebuilding a 1990s machine.",
+        "command": "cc -std=c11 -Wall -Wextra -O0 -D_FORTIFY_SOURCE=0 -fno-stack-protector overflow.c -o overflow_raw"
+      },
+      {
+        "n": 2,
+        "title": "Map which bytes land where",
+        "detail": "Run with inputs of increasing length and record `neighbour` each time. Generate the inputs with `printf 'A%.0s' {1..N}` in your shell, or just type them. On the author's machine:\n\n| input length | `neighbour` after the copy | what happened |\n|---|---|---|\n| 15 | `NEIGHBOUR-INTACT` | fits: 15 + NUL = 16 bytes, exactly full |\n| 16 | *(empty)* | the **NUL alone** overflowed — it landed in `neighbour[0]`, making it an empty string |\n| 17 | `A` | first smeared letter: byte 17 of the copy is `neighbour[0]` |\n| 20 | `AAAA` | one letter per byte past 16 |\n| 24 | `AAAAAAAA` | |\n| 32 | `AAAAAAAAAAAAAAAA` | half the neighbour rewritten |\n| 48 | `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA` | all 32 bytes of `neighbour` smeared, NUL exactly at its end |\n| 80 | *(program dies: `Bus error: 10`)* | smear reached the saved return address |\n\nDraw the stack picture for yourself — a column of addresses, `buf` occupying 16 bytes, `neighbour` the next 32, the frame's bookkeeping above — and mark, for input length *n*, that the copy writes bytes 0 through *n* (the NUL is byte *n*). The smear begins at *n* = 16, one byte earlier than your intuition says, because **the terminator overflows first**. Off-by-one is not a small bug; it is the first byte of every big one.",
+        "command": null
+      },
+      {
+        "n": 3,
+        "title": "Rebuild with the canary only and locate it",
+        "detail": "Rebuild with `-D_FORTIFY_SOURCE=0` alone (the stack protector back on) and binary-search the input length where `Abort trap: 6` appears. On the author's machine: length 56. That number *is* the canary's position — you just measured your stack frame's layout with a hose of `A`s.",
+        "command": null
+      },
+      {
+        "n": 4,
+        "title": "Fix it with a length-checked copy",
+        "detail": "New file `fixed.c`, same shape as the cold open, one line different — replace the unbounded `strcpy(buf, argv[1]);` with:\n\n```c\nsnprintf(buf, sizeof buf, \"%s\", argv[1]);   /* the length-checked copy */\n```\n\nCompile it *plain* — no special flags, safeties on, exactly as you would ship it — and feed it the same 32 `A`s:\n\n```text\nbefore: neighbour = NEIGHBOUR-INTACT\nafter:  buf       = AAAAAAAAAAAAAAA\nafter:  neighbour = NEIGHBOUR-INTACT\n```\n\nThe 32-`A` input is now *truncated* to 15 bytes plus a NUL, and the neighbour never flickers. Note the discipline in that one line: the bound is `sizeof buf`, written at the call site where the array still exists and `sizeof` still means the whole block — this is the decay section paying rent. Note also what `snprintf` returns (the would-be length) and that a serious caller checks it to detect the truncation; the build task makes that non-optional.",
+        "command": "cc -std=c11 -Wall -Wextra -O0 fixed.c -o fixed\n./fixed AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      },
+      {
+        "n": 5,
+        "title": "State the rule",
+        "detail": "One sentence, precise, no hand-waving — say exactly what the unbounded version trusted. Then check yours against the closing prompt below.",
+        "command": null
+      }
+    ],
+    "closingPrompt": "The unbounded version trusted that the input would never be longer than the destination — it trusted the *length* of `argv[1]`, a value it never measured, supplied by someone it never met."
+  },
+  "buildTask": {
+    "title": "read_line — the bounded reader",
+    "brief": "A function you will reuse for the rest of the curriculum, starting in I.7 where it is packaged into `libcore.a`. Write `read_line.c` plus a `main` that demonstrates and tests it.\n\n**Interface (exact):**\n\n```c\n#include <stddef.h>\n\n/* Reads one line from stdin into caller-provided storage.\n * Contract you must honour and document in the header comment:\n *   - writes at most cap - 1 payload bytes into dst\n *   - always NUL-terminates dst (empty input and EOF included)\n *   - reports truncation so the caller cannot silently accept half a line\n */\nint read_line(char *dst, size_t cap);\n```\n\nThe return type is your design: an `int` status, a byte count, an enum — anything that lets the caller distinguish *full line read* from *line truncated* (and think about what EOF before any bytes should mean). Whatever you choose, document it in the header comment the way I.4 taught you to document ownership.\n\n**Behavioural requirements.** Reads characters from `stdin` up to and including the newline (or EOF), storing at most `cap - 1` payload bytes in `dst`. Never writes past `dst[cap - 1]`, under any input, including inputs thousands of bytes longer than `cap`. Always leaves `dst` a valid, NUL-terminated C string — on empty input, on immediate EOF, on truncation, every path. Consumes the rest of an over-long line from `stdin` (so the next call starts at the next line), and signals the truncation distinctly. Handles `cap == 0` and `cap == 1` sensibly — decide what \"sensibly\" means and document it.\n\n**Constraints.** Banned anywhere in the source: `gets`, `strcpy`, `strcat`, `sprintf`, and `%s` with `scanf`. The point of the exercise is that you can write the bounded loop yourself, so write it. Clean under `cc -std=c11 -Wall -Wextra`.\n\nDo not look for the \"right\" answer online. The whole artifact is fifty lines; the discipline in it is the point.",
+    "gate": false,
+    "rubric": [
+      {
+        "id": "never-overruns",
+        "criterion": "Never writes past `dst[cap - 1]` under any input, including inputs far longer than `cap` — demonstrated with a canary test: a `char canary[...]` sentinel adjacent to a deliberately small `dst`, inputs of escalating length (well past `cap`), the canary asserted byte-for-byte intact after every call and printed in the test output",
+        "weight": 1
+      },
+      {
+        "id": "always-terminates",
+        "criterion": "Always NUL-terminates, including on empty input and EOF — tests cover: empty line, EOF as the first byte, a line of exactly `cap - 1`, exactly `cap`, and far beyond `cap`, each followed by a `strlen(dst) < cap` assertion",
+        "weight": 1
+      },
+      {
+        "id": "signals-truncation",
+        "criterion": "Signals truncation distinctly — a test feeds an over-long line and demonstrates the caller *branching* on the truncation signal, not merely ignoring the return value",
+        "weight": 1
+      },
+      {
+        "id": "no-banned-functions",
+        "criterion": "No banned functions — `grep` clean; stated, not assumed",
+        "weight": 1
+      }
+    ],
+    "stretch": [
+      "Make the return value also tell the caller how many payload bytes the full line *would* have needed, `snprintf`-style, so a caller can size a retry.",
+      "Strip a trailing `\\r\\n` pair as well as `\\n`, and add a test for it — you will thank yourself the first time you parse a config file written on Windows."
+    ]
+  }
+}
