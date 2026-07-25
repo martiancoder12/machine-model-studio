@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "prebuild": "node scripts/sync-static-content.mjs"
+    "prebuild": "node scripts/sync-static-content.mjs",
+    "deploy": "vercel --prod --yes --name machine-model-studio"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
