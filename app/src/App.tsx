@@ -125,7 +125,9 @@ export default function App() {
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       <Group orientation="horizontal" className="flex-1">
-        <Panel defaultSize={18} minSize={14} maxSize={30}>
+        {/* Sizes are percentage STRINGS: in react-resizable-panels v4,
+            bare numbers mean pixels, not percent. */}
+        <Panel defaultSize="18%" minSize="14%" maxSize="30%">
           <ModuleSidebar
             manifest={manifest}
             loading={manifestLoading}
@@ -140,15 +142,15 @@ export default function App() {
           />
         </Panel>
 
-        <Separator className="w-px bg-border transition-colors hover:bg-ring/40" />
+        <Separator className="w-1 bg-border transition-colors hover:bg-ring/50" />
 
-        <Panel defaultSize={47} minSize={30}>
+        <Panel defaultSize="47%" minSize="30%">
           <BookReader moduleId={activeModuleId} />
         </Panel>
 
-        <Separator className="w-px bg-border transition-colors hover:bg-ring/40" />
+        <Separator className="w-1 bg-border transition-colors hover:bg-ring/50" />
 
-        <Panel defaultSize={35} minSize={24}>
+        <Panel defaultSize="35%" minSize="24%">
           <StudyPanel
             moduleId={activeModuleId}
             moduleTitle={activeModuleTitle}
