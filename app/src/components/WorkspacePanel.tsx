@@ -12,6 +12,7 @@ import { RunBar } from './RunBar';
 
 interface WorkspacePanelProps {
   moduleId: string | null;
+  moduleTitle: string | null;
   /** Called when a run completes successfully — used to auto-promote module
    * progress to "working" (never demotes). */
   onRan?: () => void;
@@ -27,7 +28,7 @@ function isValidPath(p: string): boolean {
   );
 }
 
-export function WorkspacePanel({ moduleId, onRan }: WorkspacePanelProps) {
+export function WorkspacePanel({ moduleId, moduleTitle, onRan }: WorkspacePanelProps) {
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [dirtyPaths, setDirtyPaths] = useState<Set<string>>(new Set());
@@ -37,6 +38,7 @@ export function WorkspacePanel({ moduleId, onRan }: WorkspacePanelProps) {
   const [newFileOpen, setNewFileOpen] = useState(false);
   const [newFileName, setNewFileName] = useState('');
   const [runResult, setRunResult] = useState<RunResult | null>(null);
+  const [runFlags, setRunFlags] = useState<{ opt: string; sanitizers: boolean } | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
 
@@ -52,6 +54,7 @@ export function WorkspacePanel({ moduleId, onRan }: WorkspacePanelProps) {
     setLoading(true);
     setLoadError(null);
     setRunResult(null);
+    setRunFlags(null);
     setRunError(null);
     api
       .getFiles(moduleId)
@@ -291,9 +294,10 @@ export function WorkspacePanel({ moduleId, onRan }: WorkspacePanelProps) {
           activeFile={activePath}
           running={running}
           onRunningChange={setRunning}
-          onResult={(r) => {
+          onResult={(r, flags) => {
             setRunError(null);
             setRunResult(r);
+            setRunFlags(flags);
             onRan?.();
           }}
           onError={(msg) => {
@@ -305,7 +309,14 @@ export function WorkspacePanel({ moduleId, onRan }: WorkspacePanelProps) {
 
       {/* ---- output console ---- */}
       <div className="flex min-h-[120px] flex-[2] basis-0 flex-col">
-        <OutputConsole result={runResult} running={running} error={runError} />
+        <OutputConsole
+          result={runResult}
+          running={running}
+          error={runError}
+          moduleId={moduleId}
+          moduleTitle={moduleTitle}
+          flags={runFlags}
+        />
       </div>
     </div>
   );

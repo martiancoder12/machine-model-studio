@@ -1,13 +1,28 @@
-import { TerminalSquare } from 'lucide-react';
+import { useState } from 'react';
+import { Archive, TerminalSquare } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { SanitizerCard } from '@/components/SanitizerCard';
 import { parseSanitizerReport } from '@/lib/sanitizer';
+import { addVaultEntry } from '@/lib/vault';
 import type { RunResult } from '@/types/api';
 
 interface OutputConsoleProps {
   result: RunResult | null;
   running: boolean;
   error: string | null;
+  moduleId: string | null;
+  moduleTitle: string | null;
+  flags: { opt: string; sanitizers: boolean } | null;
 }
 
 function Section({ label, tone, text }: { label: string; tone: string; text: string }) {
@@ -19,10 +34,34 @@ function Section({ label, tone, text }: { label: string; tone: string; text: str
   );
 }
 
-export function OutputConsole({ result, running, error }: OutputConsoleProps) {
+export function OutputConsole({ result, running, error, moduleId, moduleTitle, flags }: OutputConsoleProps) {
   const isArtifactAction =
     result !== null && (result.action === 'preprocess' || result.action === 'assembly' || result.action === 'object');
   const sanitizerReport = result ? parseSanitizerReport(result.stderr) : null;
+
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveLabel, setSaveLabel] = useState('');
+  const [savedTick, setSavedTick] = useState(false);
+
+  function defaultLabel(): string {
+    if (!result) return '';
+    const mod = moduleId ? `I.${moduleId}` : 'run';
+    return `${mod} · ${result.action}`;
+  }
+
+  function handleSave() {
+    if (!result || !moduleId) return;
+    addVaultEntry(result, {
+      moduleId,
+      moduleTitle: moduleTitle ?? moduleId,
+      label: saveLabel.trim() || defaultLabel(),
+      flags: flags ?? { opt: '0', sanitizers: false },
+    });
+    setSaveOpen(false);
+    setSaveLabel('');
+    setSavedTick(true);
+    setTimeout(() => setSavedTick(false), 2000);
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col border-t border-border bg-[#221f1c]">
@@ -33,7 +72,7 @@ export function OutputConsole({ result, running, error }: OutputConsoleProps) {
         </span>
         {running && <span className="text-[11px] text-amber-300/90">running…</span>}
         {result && !running && (
-          <span className="ml-auto text-[11px] text-stone-500">
+          <span className="text-[11px] text-stone-500">
             {result.compileOk
               ? result.exitCode !== null
                 ? `exit ${result.exitCode}${result.timedOut ? ' · timed out' : ''} · ${result.durationMs} ms`
@@ -41,6 +80,22 @@ export function OutputConsole({ result, running, error }: OutputConsoleProps) {
               : `compile failed · ${result.durationMs} ms`}
           </span>
         )}
+        {result && !running && moduleId && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto h-6 gap-1 px-2 text-[11px] text-stone-400 hover:bg-white/10 hover:text-stone-200"
+            title="Keep this result in the vault"
+            onClick={() => {
+              setSaveLabel(defaultLabel());
+              setSaveOpen(true);
+            }}
+          >
+            <Archive className="h-3 w-3" />
+            {savedTick ? 'Saved ✓' : 'Save to vault'}
+          </Button>
+        )}
+        {!(result && !running && moduleId) && result && !running && <span className="ml-auto" />}
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
@@ -117,6 +172,36 @@ export function OutputConsole({ result, running, error }: OutputConsoleProps) {
           )}
         </div>
       </ScrollArea>
+
+      <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Save to vault</DialogTitle>
+            <DialogDescription>
+              Keeps this run&apos;s output (stdout, diagnostics, artifact) for later review.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSave();
+            }}
+          >
+            <Input
+              autoFocus
+              value={saveLabel}
+              onChange={(e) => setSaveLabel(e.target.value)}
+              placeholder="Label, e.g. I.03 · assembly -O0 vs -O2"
+              className="text-sm"
+            />
+            <DialogFooter className="mt-4">
+              <Button type="submit" size="sm">
+                Save
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import { Badge } from '@/components/ui/badge';
 import { BookReader } from '@/components/BookReader';
+import { DashboardDialog } from '@/components/DashboardDialog';
 import { ModuleSidebar } from '@/components/ModuleSidebar';
 import { StudyPanel } from '@/components/StudyPanel';
 import { api, isMockMode } from '@/lib/api';
@@ -12,7 +13,28 @@ import {
   saveProgress,
   setStatus,
 } from '@/lib/progress';
+import {
+  clearReps,
+  completeRep,
+  dueReps,
+  loadReps,
+  saveReps,
+  scheduleReps,
+  type RepsMap,
+} from '@/lib/reps';
 import type { Manifest, ModuleStatus, ProgressMap } from '@/types/api';
+
+/** Keep the rep ladder in step with progress: a module enters the ladder
+ * when it reaches "done" and leaves it if it is un-marked. */
+function syncRepsWithProgress(reps: RepsMap, progress: ProgressMap): RepsMap {
+  let next = reps;
+  for (const moduleId of Object.keys(progress)) {
+    const done = getStatus(progress, moduleId) === 'done';
+    if (done && !next[moduleId]) next = scheduleReps(next, moduleId);
+    if (!done && next[moduleId]) next = clearReps(next, moduleId);
+  }
+  return next;
+}
 
 export default function App() {
   const [manifest, setManifest] = useState<Manifest | null>(null);
@@ -20,6 +42,8 @@ export default function App() {
   const [manifestError, setManifestError] = useState<string | null>(null);
   const [activeModuleId, setActiveModuleId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressMap>(() => loadProgress());
+  const [reps, setReps] = useState<RepsMap>(() => syncRepsWithProgress(loadReps(), loadProgress()));
+  const [dashboardOpen, setDashboardOpen] = useState(false);
   const [mockMode, setMockMode] = useState(false);
 
   useEffect(() => {
@@ -40,6 +64,19 @@ export default function App() {
   const updateProgress = useCallback((next: ProgressMap) => {
     setProgress(next);
     saveProgress(next);
+    setReps((prev) => {
+      const synced = syncRepsWithProgress(prev, next);
+      if (synced !== prev) saveReps(synced);
+      return synced;
+    });
+  }, []);
+
+  const handleCompleteRep = useCallback((moduleId: string) => {
+    setReps((prev) => {
+      const next = completeRep(prev, moduleId);
+      if (next !== prev) saveReps(next);
+      return next;
+    });
   }, []);
 
   const handleSelectModule = useCallback(
@@ -81,6 +118,10 @@ export default function App() {
     [],
   );
 
+  const activeModuleTitle =
+    manifest?.modules.find((m) => m.id === activeModuleId)?.title ?? null;
+  const dueRepCount = dueReps(reps).length;
+
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       <Group orientation="horizontal" className="flex-1">
@@ -91,9 +132,11 @@ export default function App() {
             error={manifestError}
             activeModuleId={activeModuleId}
             progress={progress}
+            dueRepCount={dueRepCount}
             onSelectModule={handleSelectModule}
             onCycleStatus={handleCycleStatus}
             onSetStatus={handleSetStatus}
+            onOpenDashboard={() => setDashboardOpen(true)}
           />
         </Panel>
 
@@ -108,10 +151,21 @@ export default function App() {
         <Panel defaultSize={35} minSize={24}>
           <StudyPanel
             moduleId={activeModuleId}
+            moduleTitle={activeModuleTitle}
             onRan={activeModuleId ? () => handleRan(activeModuleId) : undefined}
           />
         </Panel>
       </Group>
+
+      <DashboardDialog
+        open={dashboardOpen}
+        onOpenChange={setDashboardOpen}
+        manifest={manifest}
+        progress={progress}
+        reps={reps}
+        onCompleteRep={handleCompleteRep}
+        onJumpToModule={handleSelectModule}
+      />
 
       {mockMode && (
         <div className="pointer-events-none fixed bottom-3 left-3 z-50">

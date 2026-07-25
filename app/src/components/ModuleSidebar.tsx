@@ -1,4 +1,4 @@
-import { BookOpen, Check, ChevronDown } from 'lucide-react';
+import { BookOpen, Check, ChevronDown, Gauge } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -17,9 +17,11 @@ interface ModuleSidebarProps {
   error: string | null;
   activeModuleId: string | null;
   progress: ProgressMap;
+  dueRepCount: number;
   onSelectModule: (moduleId: string) => void;
   onCycleStatus: (moduleId: string) => void;
   onSetStatus: (moduleId: string, status: ModuleStatus) => void;
+  onOpenDashboard: () => void;
 }
 
 const MARKER_STYLES: Record<string, string> = {
@@ -191,8 +193,21 @@ export function ModuleSidebar(props: ModuleSidebarProps) {
           )}
         </div>
       </ScrollArea>
-      <div className="border-t border-sidebar-border px-4 py-2.5">
-        <p className="text-[10px] leading-relaxed text-muted-foreground">
+      <div className="border-t border-sidebar-border px-3 py-2.5">
+        <button
+          type="button"
+          onClick={props.onOpenDashboard}
+          className="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-[11px] font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
+        >
+          <Gauge className="h-3.5 w-3.5" />
+          Dashboard
+          {props.dueRepCount > 0 && (
+            <Badge className="ml-auto border-amber-700/40 bg-amber-100 px-1.5 py-0 text-[10px] text-amber-900" variant="outline">
+              {props.dueRepCount} rep{props.dueRepCount === 1 ? '' : 's'} due
+            </Badge>
+          )}
+        </button>
+        <p className="mt-1 px-1.5 text-[10px] leading-relaxed text-muted-foreground">
           Progress is stored locally in your browser.
         </p>
       </div>

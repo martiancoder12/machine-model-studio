@@ -4,12 +4,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BuildTaskPanel } from '@/components/BuildTaskPanel';
 import { LabPanel } from '@/components/LabPanel';
+import { NotesPanel } from '@/components/NotesPanel';
+import { VaultPanel } from '@/components/VaultPanel';
 import { WorkspacePanel } from '@/components/WorkspacePanel';
 import { api, ApiError } from '@/lib/api';
 import type { StudyContent } from '@/types/api';
 
 interface StudyPanelProps {
   moduleId: string | null;
+  moduleTitle: string | null;
   /** Called when a run completes — used to auto-promote module progress. */
   onRan?: () => void;
 }
@@ -23,7 +26,7 @@ type StudyLoad =
 
 /** Right region of the study shell: Workspace (editor/run, unchanged) plus
  * the Phase 2 guided-content tabs — Lab walkthrough and Build Task rubric. */
-export function StudyPanel({ moduleId, onRan }: StudyPanelProps) {
+export function StudyPanel({ moduleId, moduleTitle, onRan }: StudyPanelProps) {
   const [study, setStudy] = useState<StudyLoad>({ kind: 'idle' });
 
   useEffect(() => {
@@ -61,6 +64,12 @@ export function StudyPanel({ moduleId, onRan }: StudyPanelProps) {
           <TabsTrigger value="build" className="px-3 text-[11px]">
             Build Task
           </TabsTrigger>
+          <TabsTrigger value="notes" className="px-3 text-[11px]">
+            Notes
+          </TabsTrigger>
+          <TabsTrigger value="vault" className="px-3 text-[11px]">
+            Vault
+          </TabsTrigger>
         </TabsList>
       </div>
 
@@ -68,7 +77,7 @@ export function StudyPanel({ moduleId, onRan }: StudyPanelProps) {
           console never lose state; Radix unmounts inactive content, so the
           workspace tab gets forceMount + hidden styling instead. */}
       <TabsContent value="workspace" forceMount className="min-h-0 flex-1 data-[state=inactive]:hidden">
-        <WorkspacePanel moduleId={moduleId} onRan={onRan} />
+        <WorkspacePanel moduleId={moduleId} moduleTitle={moduleTitle} onRan={onRan} />
       </TabsContent>
 
       <TabsContent value="lab" className="min-h-0 flex-1">
@@ -89,6 +98,20 @@ export function StudyPanel({ moduleId, onRan }: StudyPanelProps) {
             <StudyPlaceholder moduleId={moduleId} study={study} which="build task" />
           )}
         </ScrollArea>
+      </TabsContent>
+
+      {/* Notes stays mounted too so an in-flight debounced save and the
+          textarea's undo history survive tab switches. */}
+      <TabsContent value="notes" forceMount className="min-h-0 flex-1 data-[state=inactive]:hidden">
+        {moduleId ? (
+          <NotesPanel key={moduleId} moduleId={moduleId} />
+        ) : (
+          <PlaceholderShell>Select a module to take notes.</PlaceholderShell>
+        )}
+      </TabsContent>
+
+      <TabsContent value="vault" className="min-h-0 flex-1">
+        <VaultPanel />
       </TabsContent>
     </Tabs>
   );

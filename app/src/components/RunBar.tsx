@@ -27,7 +27,7 @@ interface RunBarProps {
   activeFile: string | null;
   running: boolean;
   onRunningChange: (running: boolean) => void;
-  onResult: (result: RunResult) => void;
+  onResult: (result: RunResult, flags: { opt: string; sanitizers: boolean }) => void;
   onError: (message: string) => void;
 }
 
@@ -60,7 +60,7 @@ export function RunBar({
         stdin,
         flags: { opt, sanitizers },
       });
-      onResult(result);
+      onResult(result, { opt, sanitizers });
     } catch (e) {
       onError(e instanceof Error ? e.message : 'run request failed');
     } finally {
